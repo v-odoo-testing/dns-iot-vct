@@ -75,7 +75,7 @@ class DNSHandler(BaseRequestHandler):
                     logging.info(f"DNS {qt}:{qn} from {client}:{port} -> {ip}")
                     reply.add_answer(*RR.fromZone(f"{qn} 5 A {ip_address}"))
         if not found:
-            reply = self._nxdomain(qn, qt, request, client, port)
+            reply = self._nxdomain(qn, qt, request)
         return reply
 
     def _handle_txt(self, qn, qt, request, reply):
@@ -88,7 +88,7 @@ class DNSHandler(BaseRequestHandler):
                 logging.info(f" DNS {qt}:{qn} from {client}:{port} -> {print_value}")
                 reply.add_answer(*RR.fromZone(f"{qn} 5 TXT {value}"))
         if not found:
-            reply = self._nxdomain(qn, qt, request, client, port)
+            reply = self._nxdomain(qn, qt, request)
         return reply
 
     def _handle_txt_modif(self, qn, request, reply):
@@ -136,20 +136,20 @@ class DNSHandler(BaseRequestHandler):
         qt = QTYPE[qtype]
 
         if BASE_NAME not in qn:
-            reply = self._refused(qn, qt, request, client, port)
+            reply = self._refused(qn, qt, request)
 
         elif f".{BASE_NAME}" not in qn:
-            reply = self._nxdomain(qn, qt, request, client, port)
+            reply = self._nxdomain(qn, qt, request)
 
         elif qt == "A":
-            reply = self._handle_a_record(qn, qt, request, client, port, reply)
+            reply = self._handle_a_record(qn, qt, request, reply)
 
         elif qt == "TXT":
 
             if (":-:" in qn or ":+:" in qn) and client == "127.0.0.1":
                 reply = self._handle_txt_modif(qn, request, reply)
             else:
-                reply = self._handle_txt(qn, qt, request, client, port, reply)
+                reply = self._handle_txt(qn, qt, request, reply)
 
         else:
             logging.error(f" DNS {qt}:{qn} from {client}:{port} unsupported type")
