@@ -1,5 +1,5 @@
-from dnslib import DNSRecord, DNSHeader, RR, QTYPE
 from socketserver import UDPServer, BaseRequestHandler
+from dnslib import DNSRecord, DNSHeader, RR, QTYPE
 import ipaddress
 import yaml
 
