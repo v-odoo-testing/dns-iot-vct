@@ -1,0 +1,12 @@
+# /etc/systemd/system/dns-iot.service
+[Unit] Description=VCT IoT DNS Server After=network.target
+
+ [Service]
+ Type=simple
+ Restart=on-failure
+ RestartSec=5s
+ ExecStart=/usr/bin/dns-iot.py -c /etc/dns-iot/dns-iot-config.yaml
+ LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

@@ -1,3 +1,7 @@
 host: 127.0.0.1
 port: 53
 base_domain: iot.v-odoo.com
+subdomains:
+  - psa
+  - sss
+  - tato
