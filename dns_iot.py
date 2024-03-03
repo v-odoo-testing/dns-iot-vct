@@ -98,7 +98,6 @@ class DNSHandler(BaseRequestHandler):
     def _handle_txt_modif(self, qn, request, reply):
         # use TXT dns query to add or remove a TXT record from our dns server,
         # only possible from local 127.0.0.1 client
-        global config_TXT
         if ":+:" in qn:
             split_qn = qn.split(":+:")
             qn_clean = split_qn[0]
@@ -186,13 +185,13 @@ if __name__ == "__main__":
     except:
         BASE_NAME = "iot.v-odoo.com"
 
-    log_level = "info"
+    LOG_LEVEL = "info"
     try:
-        log_level = config["log_level"]
+        LOG_LEVEL = config["log_level"]
     except:
         pass
 
-    # if log_level in "DEBUG":
+    # if LOG_LEVEL in "DEBUG":
     #     logging.basicConfig(level=logging.DEBUG,format='%(module)s-%(funcName)s: %(message)s')
     #     logging.debug("Debug level logging started")
     # else:
