@@ -6,25 +6,27 @@ from socketserver import UDPServer, BaseRequestHandler
 import yaml
 from dnslib import DNSRecord, DNSHeader, RR, QTYPE
 
-global base_name
-global config
-global config_TXT
-global config_A
 
-config_TXT = {}
-config_A = {}
-config = {}
 
-base_domain = ""
+
+
+
+
+
 
 
 class DomainName(str):
+    """Class representing doname name change"""
     def __getattr__(self, item):
         return DomainName(item + "." + self)
 
 
 class DNSHandler(BaseRequestHandler):
+    """Class handling the DNS"""
     def handle(self):
+        global BASE_NAME
+        global config_TXT
+
         data = self.request[0].strip()
         request = DNSRecord.parse(data)
 
@@ -40,11 +42,11 @@ class DNSHandler(BaseRequestHandler):
         qtype = request.q.qtype
         qt = QTYPE[qtype]
         # print (f'qt={qt}')
-        base_domain = "iot.v-odoo.com"
+        BASE_NAME = "iot.v-odoo.com"
         if (
             qt == "TXT"
             and (":-:" in qn or ":+:" in qn)
-            and base_domain in qn
+            and BASE_NAME in qn
             and client == "127.0.0.1"
         ):
             # use TXT dns query to add or remove a TXT record from our dns server,
@@ -52,7 +54,7 @@ class DNSHandler(BaseRequestHandler):
             if ":+:" in qn:
                 split_qn = qn.split(":+:")
                 qn_clean = split_qn[0]
-                key = split_qn[0].split(f".{base_domain}")[0]
+                key = split_qn[0].split(f".{BASE_NAME}")[0]
                 value = split_qn[1][:-1]
                 config_TXT[key] = value
                 reply.add_answer(*RR.fromZone(f"{qn_clean} 5 TXT {value}"))
@@ -60,7 +62,7 @@ class DNSHandler(BaseRequestHandler):
                 logging.info(f"TXT KEY  ADDED  ->{key}: '{print_value}'")
             else:
                 split_qn = qn.split(":-:")
-                key = split_qn[0].split(f".{base_domain}")[0]
+                key = split_qn[0].split(f".{BASE_NAME}")[0]
                 try:
                     del config_TXT[key]
                     reply.add_answer(*RR.fromZone(f"{split_qn[0]} 5 TXT ''"))
@@ -71,12 +73,12 @@ class DNSHandler(BaseRequestHandler):
                         q=request.q,
                     )
                     logging.error(f" KEY '{key}' to remove not found in list")
-        elif base_domain not in qn:
+        elif BASE_NAME not in qn:
             logging.error(f" DNS {qt}:{qn} from {client}:{port} wrong domain: REFUSED")
             reply = DNSRecord(
                 DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5), q=request.q
             )
-        elif f".{base_domain}." not in qn:
+        elif f".{BASE_NAME}." not in qn:
             logging.error(
                 f"DNS {qt}:{qn} from {client}:{port} wrong sub domain format NXDOMAIN"
             )
@@ -87,9 +89,9 @@ class DNSHandler(BaseRequestHandler):
             ip_address = None
             found = False
             for key in config_A:
-                if f".{key}.{base_domain}." in qn:
+                if f".{key}.{BASE_NAME}." in qn:
                     # here happens the magic
-                    ip_address = qn.split(f".{key}.{base_domain}", 1)[0].replace(
+                    ip_address = qn.split(f".{key}.{BASE_NAME}", 1)[0].replace(
                         "-", "."
                     )
                     try:
@@ -113,7 +115,7 @@ class DNSHandler(BaseRequestHandler):
         elif qt == "TXT":
             found = False
             for key, value in config_TXT.items():
-                if qn == f"{key}.{base_domain}.":
+                if qn == f"{key}.{BASE_NAME}.":
                     found = True
                     print_value = (value[:15] + "..") if len(value) > 15 else value
                     logging.info(
@@ -130,21 +132,29 @@ class DNSHandler(BaseRequestHandler):
                 )
         else:
             logging.error(f" DNS {qt}:{qn} from {client}:{port} unsupported type")
-            # NOERROR
+            
         self.request[1].sendto(reply.pack(), self.client_address)
 
 
 if __name__ == "__main__":
-    config_file = ""
+    global BASE_NAME
+    BASE_NAME = ""
+    global config
+    config = {}
+    global config_A
+    config_A = {}
+    global config_TXT
+    config_TXT = {}
+    CONFIG_FILE = ""
     parser = OptionParser()
     parser.add_option("-c")
     options, args = parser.parse_args()
-    config_file = options.c
-    if not config_file:
-        config_file = "dns-iot-config.yaml"
+    CONFIG_FILE = options.c
+    if not CONFIG_FILE:
+        CONFIG_FILE = "dns-iot-config.yaml"
 
     try:
-        with open(config_file) as stream:
+        with open(CONFIG_FILE) as stream:
             config = yaml.safe_load(stream)
     except:
         pass
@@ -157,9 +167,9 @@ if __name__ == "__main__":
     except:
         PORT = 53
     try:
-        base_domain = config["base_domain"]
+        BASE_NAME = config["BASE_NAME"]
     except:
-        base_domain = "iot.v-odoo.com"
+        BASE_NAME = "iot.v-odoo.com"
 
     log_level = "info"
     try:
@@ -174,9 +184,9 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO
     )  # ,format='%(module)s-%(funcName)s: %(message)s')
-    logging.info(f" -> DNS with config : {config_file}")
+    logging.info(f" -> DNS with config : {CONFIG_FILE}")
     logging.info(f" -> DNS server serving on {HOST}:{PORT}")
-    logging.info(f" -> with DNS Base Domain: {base_domain}")
+    logging.info(f" -> with DNS Base Domain: {BASE_NAME}")
 
     try:
         config_A = config["subdomains"]
