@@ -1,3 +1,7 @@
+---
+status: PRODUCTION
+---
+
 # DNS IoT VCT
 
 ## purpose
