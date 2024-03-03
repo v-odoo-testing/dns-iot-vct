@@ -22,6 +22,9 @@ To enable this server, add a NS record for a subdomain pointing to this server.
 
 Don't forget to open firewall on port 53/udp
 """
+
+# pylint: disable=deprecated-module, logging-fstring-interpolation, bare-except, unspecified-encoding, line-too-long
+
 import logging
 from optparse import OptionParser
 import ipaddress
