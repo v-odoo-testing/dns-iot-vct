@@ -29,6 +29,10 @@ from socketserver import UDPServer, BaseRequestHandler
 import yaml
 from dnslib import DNSRecord, DNSHeader, RR, QTYPE
 
+BASE_NAME = ""
+config = {}
+config_A = {}
+config_TXT = {}
 
 class DomainName(str):
     """Class representing doname name change"""
@@ -94,6 +98,7 @@ class DNSHandler(BaseRequestHandler):
     def _handle_txt_modif(self, qn, request, reply):
         # use TXT dns query to add or remove a TXT record from our dns server,
         # only possible from local 127.0.0.1 client
+        global config_TXT
         if ":+:" in qn:
             split_qn = qn.split(":+:")
             qn_clean = split_qn[0]
@@ -119,9 +124,6 @@ class DNSHandler(BaseRequestHandler):
         return reply
 
     def handle(self):
-        global BASE_NAME
-        global config_TXT
-
         data = self.request[0].strip()
         request = DNSRecord.parse(data)
         client, port = self.client_address
@@ -157,14 +159,7 @@ class DNSHandler(BaseRequestHandler):
 
 
 if __name__ == "__main__":
-    global BASE_NAME
-    BASE_NAME = ""
-    global config
-    config = {}
-    global config_A
-    config_A = {}
-    global config_TXT
-    config_TXT = {}
+
     CONFIG_FILE = ""
     parser = OptionParser()
     parser.add_option("-c")
