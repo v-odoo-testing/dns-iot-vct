@@ -9,9 +9,9 @@ this is needed to create certificates to access local network resources by https
 
 to facilitate the issue of certificates, we can add txt recors by dns text query:
 
-- add:   
+- add:
    nslookup -q=txt "_acmekey.sss.iot.v-odoo.com:+:my_new_key_value" 127.0.0.1
-- query:  
+- query:
    nslookup -q=txt "_acmekey.sss.iot.v-odoo.com"
 - delete:
    nslookup -q=txt "_acmekey.sss.iot.v-odoo.com:-:" 127.0.0.1
@@ -23,7 +23,8 @@ To enable this server, add a NS record for a subdomain pointing to this server.
 Don't forget to open firewall on port 53/udp
 """
 
-# pylint: disable=deprecated-module, logging-fstring-interpolation, bare-except, unspecified-encoding, line-too-long
+# pylint: disable=deprecated-module, logging-fstring-interpolation
+# pylint: disable+=bare-except, unspecified-encoding
 
 import logging
 from optparse import OptionParser
@@ -47,75 +48,79 @@ class DomainName(str):
 class DNSHandler(BaseRequestHandler):
     """Class handling the DNS"""
 
-    def _refused(self, qn, qt, request):
+    def _refused(self, query_name, query_type, request):
         client, port = self.client_address
-        logging.error(f" DNS {qt}:{qn} from {client}:{port} wrong domain: REFUSED")
+        logging.error(f" DNS {query_type}:{query_name} from {client}:{port} wrong domain: REFUSED")
         reply = DNSRecord(
             DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5), q=request.q
         )
         return reply
 
-    def _nxdomain(self, qn, qt, request):
+    def _nxdomain(self, query_name, query_type, request):
         client, port = self.client_address
         logging.error(
-            f"DNS {qt}:{qn} from {client}:{port} wrong sub domain format NXDOMAIN"
+            f"DNS {query_type}:{query_name} from {client}:{port} wrong sub domain format NXDOMAIN"
         )
         reply = DNSRecord(
             DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=3), q=request.q
         )
         return reply
 
-    def _handle_a_record(self, qn, qt, request, reply):
+    def _handle_a_record(self, query_name, query_type, request, reply):
         ip_address = None
         client, port = self.client_address
         found = False
         for key in config_A:
-            if f".{key}.{BASE_NAME}." in qn:
+            if f".{key}.{BASE_NAME}." in query_name:
                 # here happens the magic
-                ip_address = qn.split(f".{key}.{BASE_NAME}", 1)[0].replace("-", ".")
+                ip_address = query_name.split(f".{key}.{BASE_NAME}", 1)[0].replace("-", ".")
                 try:
-                    ip = ipaddress.ip_address(ip_address)
+                    ip_check = ipaddress.ip_address(ip_address)
                 except ValueError:
                     pass
                 else:
                     found = True
-                    logging.info(f"DNS {qt}:{qn} from {client}:{port} -> {ip}")
-                    reply.add_answer(*RR.fromZone(f"{qn} 5 A {ip_address}"))
+                    logging.info(
+                        f"DNS {query_type}:{query_name} from {client}:{port} -> {ip_check}"
+                        )
+                    reply.add_answer(*RR.fromZone(f"{query_name} 5 A {ip_address}"))
         if not found:
-            reply = self._nxdomain(qn, qt, request)
+            reply = self._nxdomain(query_name, query_type, request)
         return reply
 
-    def _handle_txt(self, qn, qt, request, reply):
+    def _handle_txt(self, query_name, query_type, request, reply):
         found = False
         client, port = self.client_address
         for key, value in config_TXT.items():
-            if qn == f"{key}.{BASE_NAME}.":
+            if query_name == f"{key}.{BASE_NAME}.":
                 found = True
                 print_value = (value[:15] + "..") if len(value) > 15 else value
-                logging.info(f" DNS {qt}:{qn} from {client}:{port} -> {print_value}")
-                reply.add_answer(*RR.fromZone(f"{qn} 5 TXT {value}"))
+                logging.info(
+                    f" DNS {query_type}:{query_name} from {client}:{port} -> {print_value}"
+                    )
+                reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT {value}"))
         if not found:
-            reply = self._nxdomain(qn, qt, request)
+            reply = self._nxdomain(query_name, query_type, request)
         return reply
 
-    def _handle_txt_modif(self, qn, request, reply):
+    def _handle_txt_modif(self, query_name, request, reply):
         # use TXT dns query to add or remove a TXT record from our dns server,
         # only possible from local 127.0.0.1 client
-        if ":+:" in qn:
-            split_qn = qn.split(":+:")
-            qn_clean = split_qn[0]
-            key = qn_clean.split(f".{BASE_NAME}")[0]
-            value = split_qn[1][:-1]
+        if ":+:" in query_name:
+            split_query_name = query_name.split(":+:")
+            query_name_clean = split_query_name[0]
+            key = query_name_clean.split(f".{BASE_NAME}")[0]
+            value = split_query_name[1][:-1]
             config_TXT[key] = value
-            reply.add_answer(*RR.fromZone(f"{qn_clean} 5 TXT {value}"))
+            reply.add_answer(*RR.fromZone(f"{query_name_clean} 5 TXT {value}"))
             print_value = (value[:15] + "..") if len(value) > 15 else value
             logging.info(f"TXT KEY  ADDED  ->{key}: '{print_value}'")
         else:
-            split_qn = qn.split(":-:")
-            key = split_qn[0].split(f".{BASE_NAME}")[0]
+            split_query_name = query_name.split(":-:")
+            key = split_query_name[0].split(f".{BASE_NAME}")[0]
             try:
                 del config_TXT[key]
-                reply.add_answer(*RR.fromZone(f"{split_qn[0]} 5 TXT ''"))
+                reply.add_answer(*RR.fromZone(f"{split_query_name[0]} 5 TXT ''"))
                 logging.info(f" DNS TXT KEY REMOVED ->{key}")
             except:
                 reply = DNSRecord(
@@ -135,28 +140,28 @@ class DNSHandler(BaseRequestHandler):
         )
 
         qname = request.q.qname
-        qn = str(qname).lower()
+        query_name = str(qname).lower()
         qtype = request.q.qtype
-        qt = QTYPE[qtype]
+        query_type = QTYPE[qtype]
 
-        if BASE_NAME not in qn:
-            reply = self._refused(qn, qt, request)
+        if BASE_NAME not in query_name:
+            reply = self._refused(query_name, query_type, request)
 
-        elif f".{BASE_NAME}" not in qn:
-            reply = self._nxdomain(qn, qt, request)
+        elif f".{BASE_NAME}" not in query_name:
+            reply = self._nxdomain(query_name, query_type, request)
 
-        elif qt == "A":
-            reply = self._handle_a_record(qn, qt, request, reply)
+        elif query_type == "A":
+            reply = self._handle_a_record(query_name, query_type, request, reply)
 
-        elif qt == "TXT":
+        elif query_type == "TXT":
 
-            if (":-:" in qn or ":+:" in qn) and client == "127.0.0.1":
-                reply = self._handle_txt_modif(qn, request, reply)
+            if (":-:" in query_name or ":+:" in query_name) and client == "127.0.0.1":
+                reply = self._handle_txt_modif(query_name, request, reply)
             else:
-                reply = self._handle_txt(qn, qt, request, reply)
+                reply = self._handle_txt(query_name, query_type, request, reply)
 
         else:
-            logging.error(f" DNS {qt}:{qn} from {client}:{port} unsupported type")
+            logging.error(f" DNS {query_type}:{query_name} from {client}:{port} unsupported type")
         self.request[1].sendto(reply.pack(), self.client_address)
 
 
