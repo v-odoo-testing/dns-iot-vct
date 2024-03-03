@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """
-DNS server for iot to serve multiple subdomains from the base subdomain, converting formated subdomain to an ip address.
+DNS server for iot to serve multiple subdomains from the base subdomain,
+converting formated subdomain to an ip address.
 
 f.i. 192-168-1-2.xxxx.iot.v-odoo.com will return a A record of 192.168.1.2
 
@@ -8,9 +9,12 @@ this is needed to create certificates to access local network resources by https
 
 to facilitate the issue of certificates, we can add txt recors by dns text query:
 
-- add:    nslookup -q=txt "_acmekey.sss.iot.v-odoo.com:+:my_new_key_value" 127.0.0.1
-- query:  nslookup -q=txt "_acmekey.sss.iot.v-odoo.com"
-- delete: nslookup -q=txt "_acmekey.sss.iot.v-odoo.com:-:" 127.0.0.1
+- add:   
+   nslookup -q=txt "_acmekey.sss.iot.v-odoo.com:+:my_new_key_value" 127.0.0.1
+- query:  
+   nslookup -q=txt "_acmekey.sss.iot.v-odoo.com"
+- delete:
+   nslookup -q=txt "_acmekey.sss.iot.v-odoo.com:-:" 127.0.0.1
 
 adding and deleting is only served on 127.0.0.1, not on public ip
 
@@ -36,14 +40,16 @@ class DomainName(str):
 class DNSHandler(BaseRequestHandler):
     """Class handling the DNS"""
 
-    def _refused(self, qn, qt, request, client, port):
+    def _refused(self, qn, qt, request):
+        client, port = self.client_address
         logging.error(f" DNS {qt}:{qn} from {client}:{port} wrong domain: REFUSED")
         reply = DNSRecord(
             DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5), q=request.q
         )
         return reply
 
-    def _nxdomain(self, qn, qt, request, client, port):
+    def _nxdomain(self, qn, qt, request):
+        client, port = self.client_address
         logging.error(
             f"DNS {qt}:{qn} from {client}:{port} wrong sub domain format NXDOMAIN"
         )
@@ -52,8 +58,9 @@ class DNSHandler(BaseRequestHandler):
         )
         return reply
 
-    def _handle_a_record(self, qn, qt, request, client, port, reply):
+    def _handle_a_record(self, qn, qt, request, reply):
         ip_address = None
+        client, port = self.client_address
         found = False
         for key in config_A:
             if f".{key}.{BASE_NAME}." in qn:
@@ -71,8 +78,9 @@ class DNSHandler(BaseRequestHandler):
             reply = self._nxdomain(qn, qt, request, client, port)
         return reply
 
-    def _handle_txt(self, qn, qt, request, client, port, reply):
+    def _handle_txt(self, qn, qt, request, reply):
         found = False
+        client, port = self.client_address
         for key, value in config_TXT.items():
             if qn == f"{key}.{BASE_NAME}.":
                 found = True
@@ -205,8 +213,8 @@ if __name__ == "__main__":
     except:
         pass
 
-    for key in config_A:
-        logging.info(f" --> DNS with subdomains for  A  records {key}")
+    for a_key in config_A:
+        logging.info(f" --> DNS with subdomains for  A  records {a_key}")
 
     with UDPServer((HOST, PORT), DNSHandler) as server:
         logging.info(f"DNS server listening on {HOST}:{PORT}")
