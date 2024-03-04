@@ -6,6 +6,7 @@
             "type": "python",
             "request": "launch",
             "program": "dns_iot.py",
+            "args": ["-cetc/dns-iot/dns-iot-config.yaml"],
             "console": "integratedTerminal",
             "justMyCode": true,
             "sudo": true

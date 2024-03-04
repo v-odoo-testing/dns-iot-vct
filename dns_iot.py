@@ -24,7 +24,7 @@ Don't forget to open firewall on port 53/udp
 """
 
 # pylint: disable=deprecated-module, logging-fstring-interpolation
-# pylint: disable+=bare-except, unspecified-encoding
+# pylint: disable+=broad-exception-caught
 
 import logging
 from optparse import OptionParser
@@ -50,7 +50,7 @@ class DNSHandler(BaseRequestHandler):
 
     def _refused(self, query_name, query_type, request):
         client, port = self.client_address
-        logging.error(f" DNS {query_type}:{query_name} from {client}:{port} wrong domain: REFUSED")
+        logging.error(f" DNS {query_type}:{query_name} from HOST:{client}:{port} wrong domain: REFUSED")
         reply = DNSRecord(
             DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5), q=request.q
         )
@@ -59,7 +59,7 @@ class DNSHandler(BaseRequestHandler):
     def _nxdomain(self, query_name, query_type, request):
         client, port = self.client_address
         logging.error(
-            f"DNS {query_type}:{query_name} from {client}:{port} wrong sub domain format NXDOMAIN"
+            f"DNS {query_type}:{query_name} from HOST:{client}:{port} wrong sub domain format NXDOMAIN"
         )
         reply = DNSRecord(
             DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=3), q=request.q
@@ -81,7 +81,7 @@ class DNSHandler(BaseRequestHandler):
                 else:
                     found = True
                     logging.info(
-                        f"DNS {query_type}:{query_name} from {client}:{port} -> {ip_check}"
+                        f"DNS {query_type}:{query_name} from HOST:{client}:{port} -> {ip_check}"
                         )
                     reply.add_answer(*RR.fromZone(f"{query_name} 5 A {ip_address}"))
         if not found:
@@ -96,7 +96,7 @@ class DNSHandler(BaseRequestHandler):
                 found = True
                 print_value = (value[:15] + "..") if len(value) > 15 else value
                 logging.info(
-                    f" DNS {query_type}:{query_name} from {client}:{port} -> {print_value}"
+                    f" DNS {query_type}:{query_name} from HOST:{client}:{port} -> {print_value}"
                     )
                 reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT {value}"))
         if not found:
@@ -122,7 +122,7 @@ class DNSHandler(BaseRequestHandler):
                 del config_TXT[key]
                 reply.add_answer(*RR.fromZone(f"{split_query_name[0]} 5 TXT ''"))
                 logging.info(f" DNS TXT KEY REMOVED ->{key}")
-            except:
+            except Exception:
                 reply = DNSRecord(
                     DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5),
                     q=request.q,
@@ -161,7 +161,7 @@ class DNSHandler(BaseRequestHandler):
                 reply = self._handle_txt(query_name, query_type, request, reply)
 
         else:
-            logging.error(f" DNS {query_type}:{query_name} from {client}:{port} unsupported type")
+            logging.error(f" DNS {query_type}:{query_name} from HOST:{client}:{port} unsupported type")
         self.request[1].sendto(reply.pack(), self.client_address)
 
 
@@ -176,27 +176,27 @@ if __name__ == "__main__":
         CONFIG_FILE = "dns-iot-config.yaml"
 
     try:
-        with open(CONFIG_FILE) as stream:
+        with open(CONFIG_FILE,encoding="utf-8") as stream:
             config = yaml.safe_load(stream)
-    except:
+    except Exception:
         pass
     try:
         HOST = config["host"]
-    except:
+    except Exception:
         HOST = "127.0.0.1"
     try:
         PORT = config["port"]
-    except:
+    except Exception:
         PORT = 53
     try:
-        BASE_NAME = config["BASE_NAME"]
-    except:
+        BASE_NAME = config["base_domain"]
+    except Exception:
         BASE_NAME = "iot.v-odoo.com"
 
     LOG_LEVEL = "info"
     try:
         LOG_LEVEL = config["log_level"]
-    except:
+    except Exception:
         pass
 
     # if LOG_LEVEL in "DEBUG":
@@ -212,7 +212,7 @@ if __name__ == "__main__":
 
     try:
         config_A = config["subdomains"]
-    except:
+    except Exception:
         pass
 
     for a_key in config_A:
