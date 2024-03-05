@@ -112,7 +112,8 @@ class DNSHandler(BaseRequestHandler):
             key = query_name_clean.split(f".{BASE_NAME}")[0]
             value = split_query_name[1][:-1]
             config_TXT[key] = value
-            reply.add_answer(*RR.fromZone(f"{query_name_clean} 5 TXT {value}"))
+            #reply.add_answer(*RR.fromZone(f"{query_name_clean} 5 TXT {value}"))
+            reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT {value}"))
             print_value = (value[:15] + "..") if len(value) > 15 else value
             logging.info(f"TXT KEY  ADDED  ->{key}: '{print_value}'")
         else:
@@ -120,7 +121,8 @@ class DNSHandler(BaseRequestHandler):
             key = split_query_name[0].split(f".{BASE_NAME}")[0]
             try:
                 del config_TXT[key]
-                reply.add_answer(*RR.fromZone(f"{split_query_name[0]} 5 TXT ''"))
+                #reply.add_answer(*RR.fromZone(f"{split_query_name[0]} 5 TXT ''"))
+                reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT ''"))
                 logging.info(f" DNS TXT KEY REMOVED ->{key}")
             except Exception:
                 reply = DNSRecord(
