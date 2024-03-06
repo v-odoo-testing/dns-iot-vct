@@ -23,11 +23,13 @@ To enable this server, add a NS record for a subdomain pointing to this server.
 Don't forget to open firewall on port 53/udp
 """
 
-# pylint: disable=deprecated-module, logging-fstring-interpolation
-# pylint: disable+=broad-exception-caught
+# pylint: disable=logging-fstring-interpolation
+
 
 import logging
-from optparse import OptionParser
+
+# from optparse import OptionParser
+import argparse
 import ipaddress
 from socketserver import UDPServer, BaseRequestHandler
 import yaml
@@ -37,6 +39,7 @@ BASE_NAME = ""
 config = {}
 config_A = {}
 config_TXT = []
+
 
 class DomainName(str):
     """Class representing doname name change"""
@@ -50,7 +53,9 @@ class DNSHandler(BaseRequestHandler):
 
     def _refused(self, query_name, query_type, request):
         client, port = self.client_address
-        logging.error(f" DNS {query_type}:{query_name} from HOST:{client}:{port} wrong domain: REFUSED")
+        logging.error(
+            f" DNS {query_type}:{query_name} from HOST:{client}:{port} wrong domain: REFUSED"
+        )
         reply = DNSRecord(
             DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5), q=request.q
         )
@@ -59,7 +64,8 @@ class DNSHandler(BaseRequestHandler):
     def _nxdomain(self, query_name, query_type, request):
         client, port = self.client_address
         logging.error(
-            f"DNS {query_type}:{query_name} from HOST:{client}:{port} wrong sub domain format NXDOMAIN"
+            f"DNS {query_type}:{query_name} from HOST:{client}:{port} \
+                                            wrong sub domain format NXDOMAIN"
         )
         reply = DNSRecord(
             DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=3), q=request.q
@@ -73,7 +79,9 @@ class DNSHandler(BaseRequestHandler):
         for key in config_A:
             if f".{key}.{BASE_NAME}." in query_name:
                 # here happens the magic
-                ip_address = query_name.split(f".{key}.{BASE_NAME}", 1)[0].replace("-", ".")
+                ip_address = query_name.split(f".{key}.{BASE_NAME}", 1)[0].replace(
+                    "-", "."
+                )
                 try:
                     ip_check = ipaddress.ip_address(ip_address)
                 except ValueError:
@@ -82,7 +90,7 @@ class DNSHandler(BaseRequestHandler):
                     found = True
                     logging.info(
                         f"DNS {query_type}:{query_name} from HOST:{client}:{port} -> {ip_check}"
-                        )
+                    )
                     reply.add_answer(*RR.fromZone(f"{query_name} 5 A {ip_address}"))
         if not found:
             reply = self._nxdomain(query_name, query_type, request)
@@ -97,7 +105,7 @@ class DNSHandler(BaseRequestHandler):
                 print_value = (value[:15] + "..") if len(value) > 15 else value
                 logging.info(
                     f" DNS {query_type}:{query_name} from HOST:{client}:{port} -> {print_value}"
-                    )
+                )
                 reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT {value}"))
         if not found:
             reply = self._nxdomain(query_name, query_type, request)
@@ -124,7 +132,7 @@ class DNSHandler(BaseRequestHandler):
                 #reply.add_answer(*RR.fromZone(f"{split_query_name[0]} 5 TXT ''"))
                 reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT ''"))
                 logging.info(f" DNS TXT KEY REMOVED ->{key}")
-            except Exception:
+            except KeyError:
                 reply = DNSRecord(
                     DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5),
                     q=request.q,
@@ -163,58 +171,63 @@ class DNSHandler(BaseRequestHandler):
                 reply = self._handle_txt(query_name, query_type, request, reply)
 
         else:
-            logging.error(f" DNS {query_type}:{query_name} from HOST:{client}:{port} unsupported type")
+            logging.error(
+                f" DNS {query_type}:{query_name} from HOST:{client}:{port} unsupported type"
+            )
         self.request[1].sendto(reply.pack(), self.client_address)
 
 
 if __name__ == "__main__":
 
     CONFIG_FILE = ""
-    parser = OptionParser()
-    parser.add_option("-c")
-    options, args = parser.parse_args()
-    CONFIG_FILE = options.c
-    if not CONFIG_FILE:
-        CONFIG_FILE = "dns-iot-config.yaml"
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config_file",
+        "-c",
+        default="/etc/dns-iot/dns-iot-config.yaml",
+        help="config file for dns-iot",
+    )
+    args = parser.parse_args()
+    CONFIG_FILE = args.config_file
 
     try:
-        with open(CONFIG_FILE,encoding="utf-8") as stream:
+        with open(CONFIG_FILE, encoding="utf-8") as stream:
             config = yaml.safe_load(stream)
-    except Exception:
+    except OSError:
         pass
-    try:
+    # more type work!!
+    if config["host"]:
         HOST = config["host"]
-    except Exception:
+    else:
         HOST = "127.0.0.1"
+
     try:
         PORT = config["port"]
-    except Exception:
+    except KeyError:
         PORT = 53
     try:
         BASE_NAME = config["base_domain"]
-    except Exception:
+    except KeyError:
         BASE_NAME = "iot.v-odoo.com"
 
     LOG_LEVEL = "info"
     try:
         LOG_LEVEL = config["log_level"]
-    except Exception:
+    except KeyError:
         pass
 
     # if LOG_LEVEL in "DEBUG":
     #     logging.basicConfig(level=logging.DEBUG,format='%(module)s-%(funcName)s: %(message)s')
     #     logging.debug("Debug level logging started")
     # else:
-    logging.basicConfig(
-        level=logging.INFO
-    )  # ,format='%(module)s-%(funcName)s: %(message)s')
+    logging.basicConfig(level=logging.INFO)
     logging.info(f" -> DNS with config : {CONFIG_FILE}")
     logging.info(f" -> DNS server serving on {HOST}:{PORT}")
     logging.info(f" -> with DNS Base Domain: {BASE_NAME}")
 
     try:
         config_A = config["subdomains"]
-    except Exception:
+    except KeyError:
         pass
 
     for a_key in config_A:
