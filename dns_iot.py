@@ -23,7 +23,7 @@ To enable this server, add a NS record for a subdomain pointing to this server.
 Don't forget to open firewall on port 53/udp
 """
 
-# pylint: disable=logging-fstring-interpolation
+# pylint: disable=logging-fstring-interpolation,broad-exception-caught
 
 
 import logging
@@ -32,8 +32,10 @@ import logging
 import argparse
 import ipaddress
 from socketserver import UDPServer, BaseRequestHandler
+import binascii
 import yaml
 from dnslib import DNSRecord, DNSHeader, RR, QTYPE
+
 
 BASE_NAME = ""
 config = {}
@@ -72,6 +74,16 @@ class DNSHandler(BaseRequestHandler):
         )
         return reply
 
+    def _formerr(self, data):
+        client, port = self.client_address
+        request_id = data[0] * 256 + data[1]
+        logging.error(
+            f"DNS {binascii.hexlify(bytearray(data))}from HOST:{client}:{port} \
+                DNS Query Format Error"
+        )
+        reply = DNSRecord(DNSHeader(id=request_id, qr=1, aa=1, ra=1, rcode=1), q="")
+        return reply
+
     def _handle_a_record(self, query_name, query_type, request, reply):
         ip_address = None
         client, port = self.client_address
@@ -99,14 +111,22 @@ class DNSHandler(BaseRequestHandler):
     def _handle_txt(self, query_name, query_type, request, reply):
         found = False
         client, port = self.client_address
-        for key, value in config_TXT:
-            if query_name == f"{key}.{BASE_NAME}.":
-                found = True
-                print_value = (value[:15] + "..") if len(value) > 15 else value
-                logging.info(
-                    f" DNS {query_type}:{query_name} from HOST:{client}:{port} -> {print_value}"
-                )
-                reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT {value}"))
+        prefix = None
+        for short in config_A:
+            if f".{short}.{BASE_NAME}." in query_name:
+                prefix = short
+        if prefix:
+            for key_value in config_TXT:
+                key = query_name.split(f".{BASE_NAME}", 1)[0]
+                if key_value[key]:
+                    value = key_value[key]
+                    found = True
+                    # print_value = (value[:15] + "..") if len(value) > 15 else value
+                    print_value = value
+                    logging.info(
+                        f" DNS {query_type}:{query_name} from HOST:{client}:{port} -> {print_value}"
+                    )
+                    reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT {value}"))
         if not found:
             reply = self._nxdomain(query_name, query_type, request)
         return reply
@@ -119,30 +139,63 @@ class DNSHandler(BaseRequestHandler):
             query_name_clean = split_query_name[0]
             key = query_name_clean.split(f".{BASE_NAME}")[0]
             value = split_query_name[1][:-1]
-            config_TXT[key] = value
-            #reply.add_answer(*RR.fromZone(f"{query_name_clean} 5 TXT {value}"))
-            reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT {value}"))
-            print_value = (value[:15] + "..") if len(value) > 15 else value
+            key_value = {}
+            key_value[key] = value
+            config_TXT.append(key_value)
+            # reply.add_answer(*RR.fromZone(f"{query_name_clean} 5 TXT {value}"))
+            reply.add_answer(*RR.fromZone(f"{query_name} 30 TXT {value}"))
+            # print_value = (value[:15] + "..") if len(value) > 15 else value
+            print_value = value
             logging.info(f"TXT KEY  ADDED  ->{key}: '{print_value}'")
         else:
+            # remove key / value
+            found = False
+            find_value = None
             split_query_name = query_name.split(":-:")
-            key = split_query_name[0].split(f".{BASE_NAME}")[0]
-            try:
-                del config_TXT[key]
-                #reply.add_answer(*RR.fromZone(f"{split_query_name[0]} 5 TXT ''"))
+            find_key = split_query_name[0].split(f".{BASE_NAME}", 1)[0]
+            if len(split_query_name) > 1:
+                find_value = split_query_name[1][:-1]
+            prefix = None
+            for short in config_A:
+                if f".{short}.{BASE_NAME}" in query_name:
+                    prefix = short
+                    break
+            if prefix:
+                for key_value in config_TXT[:]:
+                    if key_value[find_key] and (
+                        (find_value and key_value[find_key] == find_value)
+                        or not find_value
+                    ):
+                        found = True
+                        config_TXT.remove(key_value)
+            if found:
                 reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT ''"))
-                logging.info(f" DNS TXT KEY REMOVED ->{key}")
-            except KeyError:
+                if find_value:
+                    logging.info(
+                        f" DNS TXT KEY/VALUE REMOVED ->'{find_key}':'{find_value}'"
+                    )
+                else:
+                    logging.info(f" DNS TXT KEY REMOVED ->'{find_key}'")
+            else:
                 reply = DNSRecord(
                     DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5),
                     q=request.q,
                 )
-                logging.error(f" KEY '{key}' to remove not found in list")
+                logging.error(
+                    f" KEY '{split_query_name[0]}': '{find_value}' to remove not found in list"
+                )
         return reply
 
     def handle(self):
         data = self.request[0].strip()
-        request = DNSRecord.parse(data)
+        try:
+            request = DNSRecord.parse(data)
+        except Exception as e:
+            print(e)
+            reply = self._formerr(data)
+            self.request[1].sendto(reply.pack(), self.client_address)
+            return
+
         client, port = self.client_address
 
         reply = DNSRecord(
