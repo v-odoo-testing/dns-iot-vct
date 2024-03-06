@@ -36,7 +36,7 @@ from dnslib import DNSRecord, DNSHeader, RR, QTYPE
 BASE_NAME = ""
 config = {}
 config_A = {}
-config_TXT = {}
+config_TXT = []
 
 class DomainName(str):
     """Class representing doname name change"""
@@ -91,7 +91,7 @@ class DNSHandler(BaseRequestHandler):
     def _handle_txt(self, query_name, query_type, request, reply):
         found = False
         client, port = self.client_address
-        for key, value in config_TXT.items():
+        for key, value in config_TXT:
             if query_name == f"{key}.{BASE_NAME}.":
                 found = True
                 print_value = (value[:15] + "..") if len(value) > 15 else value
