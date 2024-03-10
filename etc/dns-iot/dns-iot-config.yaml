@@ -7,3 +7,4 @@ subdomains:
   - tato
   - gvs
   - jag
+log_level: DEBUG

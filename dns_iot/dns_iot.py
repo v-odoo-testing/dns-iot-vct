@@ -33,14 +33,22 @@ import argparse
 import ipaddress
 from socketserver import UDPServer, BaseRequestHandler
 import binascii
+from time import sleep
 import yaml
 from dnslib import DNSRecord, DNSHeader, RR, QTYPE
+import _thread
+import time
+import zmq
 
 
-BASE_NAME = ""
 config = {}
 config_A = {}
 config_TXT = []
+
+BASE_NAME = "iot.v-odoo.com"
+HOST = "127.0.0.1"
+PORT = 53
+LOG_LEVEL = "info"
 
 
 class DomainName(str):
@@ -56,7 +64,7 @@ class DNSHandler(BaseRequestHandler):
     def _refused(self, query_name, query_type, request):
         client, port = self.client_address
         logging.error(
-            f" DNS {query_type}:{query_name} from HOST:{client}:{port} wrong domain: REFUSED"
+            f" DNS {query_type}:{query_name} from HOST:{client}:{port} wrong domain"
         )
         reply = DNSRecord(
             DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5), q=request.q
@@ -66,8 +74,7 @@ class DNSHandler(BaseRequestHandler):
     def _nxdomain(self, query_name, query_type, request):
         client, port = self.client_address
         logging.error(
-            f"DNS {query_type}:{query_name} from HOST:{client}:{port} \
-                                            wrong sub domain format NXDOMAIN"
+            f"DNS {query_type}:{query_name} from HOST:{client}:{port} wrong sub domain"
         )
         reply = DNSRecord(
             DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=3), q=request.q
@@ -131,63 +138,8 @@ class DNSHandler(BaseRequestHandler):
             reply = self._nxdomain(query_name, query_type, request)
         return reply
 
-    def _handle_txt_modif(self, query_name, request, reply):
-        # use TXT dns query to add or remove a TXT record from our dns server,
-        # only possible from local 127.0.0.1 client
-        if ":+:" in query_name:
-            split_query_name = query_name.split(":+:")
-            query_name_clean = split_query_name[0]
-            key = query_name_clean.split(f".{BASE_NAME}")[0]
-            value = split_query_name[1][:-1]
-            key_value = {}
-            key_value[key] = value
-            config_TXT.append(key_value)
-            # reply.add_answer(*RR.fromZone(f"{query_name_clean} 5 TXT {value}"))
-            reply.add_answer(*RR.fromZone(f"{query_name} 30 TXT {value}"))
-            # print_value = (value[:15] + "..") if len(value) > 15 else value
-            print_value = value
-            logging.info(f"TXT KEY  ADDED  ->{key}: '{print_value}'")
-        else:
-            # remove key / value
-            found = False
-            find_value = None
-            split_query_name = query_name.split(":-:")
-            find_key = split_query_name[0].split(f".{BASE_NAME}", 1)[0]
-            if len(split_query_name) > 1:
-                find_value = split_query_name[1][:-1]
-            prefix = None
-            for short in config_A:
-                if f".{short}.{BASE_NAME}" in query_name:
-                    prefix = short
-                    break
-            if prefix:
-                for key_value in config_TXT[:]:
-                    if key_value[find_key] and (
-                        (find_value and key_value[find_key] == find_value)
-                        or not find_value
-                    ):
-                        found = True
-                        config_TXT.remove(key_value)
-            if found:
-                reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT ''"))
-                if find_value:
-                    logging.info(
-                        f" DNS TXT KEY/VALUE REMOVED ->'{find_key}':'{find_value}'"
-                    )
-                else:
-                    logging.info(f" DNS TXT KEY REMOVED ->'{find_key}'")
-            else:
-                reply = DNSRecord(
-                    DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5),
-                    q=request.q,
-                )
-                logging.error(
-                    f" KEY '{split_query_name[0]}': '{find_value}' to remove not found in list"
-                )
-        return reply
-
     def handle(self):
-        data = self.request[0].strip()
+        data = self.request[0]  # .strip()
         try:
             request = DNSRecord.parse(data)
         except Exception as e:
@@ -230,6 +182,131 @@ class DNSHandler(BaseRequestHandler):
         self.request[1].sendto(reply.pack(), self.client_address)
 
 
+def handle_txt_modif(query_name):
+    if ":+:" in query_name:
+        split_query_name = query_name.split(":+:")
+        query_name_clean = split_query_name[0]
+        key = query_name_clean.split(f".{BASE_NAME}")[0]
+        value = split_query_name[1]
+        key_value = {}
+        key_value[key] = value
+        config_TXT.append(key_value)
+        # print_value = (value[:15] + "..") if len(value) > 15 else value
+        print_value = value
+        logging.info(f"TXT KEY  ADDED  ->{key}: '{print_value}'")
+    elif ":-:" in query_name:
+        # remove key / value
+        found = False
+        find_value = None
+        split_query_name = query_name.split(":-:")
+        find_key = split_query_name[0].split(f".{BASE_NAME}", 1)[0]
+        if len(split_query_name) > 1:
+            find_value = split_query_name[1]
+        prefix = None
+        for short in config_A:
+            if f".{short}.{BASE_NAME}" in query_name:
+                prefix = short
+                break
+        if prefix:
+            for key_value in config_TXT[:]:
+                if key_value[find_key] and (
+                    (find_value and key_value[find_key] == find_value) or not find_value
+                ):
+                    found = True
+                    config_TXT.remove(key_value)
+        if found:
+            if find_value:
+                logging.info(
+                    f" DNS TXT KEY/VALUE REMOVED ->'{find_key}':'{find_value}'"
+                )
+            else:
+                logging.info(f" DNS TXT KEY REMOVED ->'{find_key}'")
+        else:
+            logging.error(
+                f" KEY '{split_query_name[0]}': '{find_value}' to remove not found in list"
+            )
+            return False
+    else:
+        return False
+    return True
+
+
+def handle_a_modif(query_name):
+    if ":+:" in query_name:
+        split_query_name = query_name.split(":+:")
+        query_name_clean = split_query_name[0]
+        key = query_name_clean.split(f".{BASE_NAME}")[0]
+        if key not in config_A:
+            config_A.append(key)
+            logging.info(f"SUBDOMAIN ADDED  ->{key}")
+            # need to save to config
+        else:
+            logging.info(f"SUBDOMAIN ALREADY IN ->{key}")
+    elif ":-:" in query_name:
+        split_query_name = query_name.split(":-:")
+        key = split_query_name[0].split(f".{BASE_NAME}", 1)[0]
+        if key != "*":
+            if key in config_A:
+                config_A.remove(key)
+                logging.info(f" DNS SUBDOMAIN REMOVED ->'{key}'")
+            else:
+                logging.error(f" DNS  SUBDOMAIN NOT FOUND: '{key}'")
+                return False
+        else:
+            for skey in config_A[:]:
+                config_A.remove(skey)
+            logging.info(f"ALL DNS SUBDOMAINS REMOVED")
+    else:
+        return False
+    return True
+
+
+def dns_thread():
+    with UDPServer((HOST, PORT), DNSHandler) as server:
+        logging.info(f"DNS server listening on {HOST}:{PORT}")
+        server.serve_forever()
+
+
+def cnf_thread():
+    context = zmq.Context()
+    socket = context.socket(zmq.REP)
+    socket.bind("tcp://127.0.0.1:5555")
+    logging.info(f"ipc server listening")
+    while True:
+        #  Wait for next request from client
+        message = socket.recv()
+        message = message.decode("utf-8")
+        logging.info(f"Received request: {message}")
+        if "_TXT_:" in message:
+            query = message.split("_TXT_:")[1]
+            if BASE_NAME not in query:
+                socket.send(b"FAIL: wrong domain")
+
+            elif f".{BASE_NAME}" not in query:
+                socket.send(b"FAIL: wrong subdomain")
+
+            elif handle_txt_modif(query):
+                #  Send reply back to client
+                socket.send(b"OK")
+            else:
+                socket.send(b"FAIL")
+        elif "__A__:" in message:
+            query = message.split("__A__:")[1]
+            if BASE_NAME not in query:
+                socket.send(b"FAIL: wrong domain")
+
+            elif f".{BASE_NAME}" not in query:
+                socket.send(b"FAIL: nxdomain")
+
+            elif handle_a_modif(query):
+                #  Send reply back to client
+                socket.send(b"OK")
+            else:
+                socket.send(b"FAIL")
+        else:
+            socket.send(b"???: request not understood")
+
+
 if __name__ == "__main__":
 
     CONFIG_FILE = ""
@@ -248,22 +325,22 @@ if __name__ == "__main__":
             config = yaml.safe_load(stream)
     except OSError:
         pass
-    # more type work!!
-    if config["host"]:
+
+    try:
         HOST = config["host"]
-    else:
-        HOST = "127.0.0.1"
+    except KeyError:
+        pass
 
     try:
         PORT = config["port"]
     except KeyError:
-        PORT = 53
+        pass
+
     try:
         BASE_NAME = config["base_domain"]
     except KeyError:
-        BASE_NAME = "iot.v-odoo.com"
+        pass
 
-    LOG_LEVEL = "info"
     try:
         LOG_LEVEL = config["log_level"]
     except KeyError:
@@ -286,6 +363,8 @@ if __name__ == "__main__":
     for a_key in config_A:
         logging.info(f" --> DNS with subdomains for  A  records {a_key}")
 
-    with UDPServer((HOST, PORT), DNSHandler) as server:
-        logging.info(f"DNS server listening on {HOST}:{PORT}")
-        server.serve_forever()
+    _thread.start_new_thread(dns_thread, ())
+    _thread.start_new_thread(cnf_thread, ())
+
+    while True:
+        time.sleep(100)
