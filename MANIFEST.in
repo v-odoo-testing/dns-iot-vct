@@ -1,5 +1,6 @@
 include LICENSE
 include README.md
-recursive-include *
+include etc/dns-iot/dns-iot-config.yaml
+include etc/systemd/system/dns-iot.service
 global-exclude __pycache__
 global-exclude *.py[cod]

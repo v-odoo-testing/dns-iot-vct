@@ -1,10 +1,7 @@
 host: 127.0.0.1
 port: 53
+odoo_url: https://www.v-consulting.biz
 base_domain: iotdns.v-odoo.com
 subdomains:
-  - psa
-  - sss
-  - tato
-  - gvs
-  - jag
+  - danny
 log_level: DEBUG

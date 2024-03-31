@@ -1,12 +1,22 @@
 {
     "version": "0.2.0",
     "configurations": [
+
         {
             "name": "Python: dns_iot.py",
             "type": "python",
             "request": "launch",
-            "program": "dns_iot.py",
+            "program": "dns_iot/dns_iot.py",
             "args": ["-cetc/dns-iot/dns-iot-config.yaml"],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "sudo": true
+        },
+        {
+            "name": "Python: test dns_iot.py",
+            "type": "python",
+            "request": "launch",
+            "program": "test_dns/dns_test.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "sudo": true

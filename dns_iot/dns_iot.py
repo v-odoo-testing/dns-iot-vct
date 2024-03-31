@@ -25,7 +25,7 @@ Don't forget to open firewall on port 53/udp
 
 # pylint: disable=logging-fstring-interpolation,broad-exception-caught
 
-
+import os
 import logging
 
 # from optparse import OptionParser
@@ -38,18 +38,24 @@ import yaml
 from dnslib import DNSRecord, DNSHeader, RR, QTYPE
 import _thread
 import time
+import tzlocal
 import zmq
+import json
+import requests
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
-
-config = {}
-config_A = {}
-config_TXT = []
-
+ODOO_URL= "https://www.v-consulting.biz"
+ODOO_API= "/vct_iot_subscription/list"
 BASE_NAME = "iot.v-odoo.com"
 HOST = "127.0.0.1"
 PORT = 53
 LOG_LEVEL = "info"
 
+config = {}
+config_subdomains = None
+base_domain = None 
+config_TXT = []
 
 class DomainName(str):
     """Class representing doname name change"""
@@ -95,10 +101,10 @@ class DNSHandler(BaseRequestHandler):
         ip_address = None
         client, port = self.client_address
         found = False
-        for key in config_A:
-            if f".{key}.{BASE_NAME}." in query_name:
+        for key in config_subdomains:
+            if f".{key}.{base_domain}." in query_name:
                 # here happens the magic
-                ip_address = query_name.split(f".{key}.{BASE_NAME}", 1)[0].replace(
+                ip_address = query_name.split(f".{key}.{base_domain}", 1)[0].replace(
                     "-", "."
                 )
                 try:
@@ -110,7 +116,7 @@ class DNSHandler(BaseRequestHandler):
                     logging.info(
                         f"DNS {query_type}:{query_name} from HOST:{client}:{port} -> {ip_check}"
                     )
-                    reply.add_answer(*RR.fromZone(f"{query_name} 5 A {ip_address}"))
+                    reply.add_answer(*RR.fromZone(f"{query_name} 86400 A {ip_address}"))
         if not found:
             reply = self._nxdomain(query_name, query_type, request)
         return reply
@@ -119,21 +125,24 @@ class DNSHandler(BaseRequestHandler):
         found = False
         client, port = self.client_address
         prefix = None
-        for short in config_A:
-            if f".{short}.{BASE_NAME}." in query_name:
-                prefix = short
+        for short in config_subdomains:
+            if f".{short}.{base_domain}." in query_name:
+                prefix = short5
         if prefix:
             for key_value in config_TXT:
-                key = query_name.split(f".{BASE_NAME}", 1)[0]
-                if key_value[key]:
+                key = query_name.split(f".{base_domain}", 1)[0]
+                try:
                     value = key_value[key]
+                except KeyError:
+                    pass
+                else:
                     found = True
                     # print_value = (value[:15] + "..") if len(value) > 15 else value
                     print_value = value
                     logging.info(
                         f" DNS {query_type}:{query_name} from HOST:{client}:{port} -> {print_value}"
                     )
-                    reply.add_answer(*RR.fromZone(f"{query_name} 5 TXT {value}"))
+                    reply.add_answer(*RR.fromZone(f"{query_name} 60 TXT {value}"))
         if not found:
             reply = self._nxdomain(query_name, query_type, request)
         return reply
@@ -159,10 +168,10 @@ class DNSHandler(BaseRequestHandler):
         qtype = request.q.qtype
         query_type = QTYPE[qtype]
 
-        if BASE_NAME not in query_name:
+        if base_domain not in query_name:
             reply = self._refused(query_name, query_type, request)
 
-        elif f".{BASE_NAME}" not in query_name:
+        elif f".{base_domain}" not in query_name:
             reply = self._nxdomain(query_name, query_type, request)
 
         elif query_type == "A":
@@ -186,7 +195,7 @@ def handle_txt_modif(query_name):
     if ":+:" in query_name:
         split_query_name = query_name.split(":+:")
         query_name_clean = split_query_name[0]
-        key = query_name_clean.split(f".{BASE_NAME}")[0]
+        key = query_name_clean.split(f".{base_domain}")[0]
         value = split_query_name[1]
         key_value = {}
         key_value[key] = value
@@ -199,12 +208,12 @@ def handle_txt_modif(query_name):
         found = False
         find_value = None
         split_query_name = query_name.split(":-:")
-        find_key = split_query_name[0].split(f".{BASE_NAME}", 1)[0]
+        find_key = split_query_name[0].split(f".{base_domain}", 1)[0]
         if len(split_query_name) > 1:
             find_value = split_query_name[1]
         prefix = None
-        for short in config_A:
-            if f".{short}.{BASE_NAME}" in query_name:
+        for short in config_subdomains:
+            if f".{short}.{base_domain}" in query_name:
                 prefix = short
                 break
         if prefix:
@@ -235,26 +244,26 @@ def handle_a_modif(query_name):
     if ":+:" in query_name:
         split_query_name = query_name.split(":+:")
         query_name_clean = split_query_name[0]
-        key = query_name_clean.split(f".{BASE_NAME}")[0]
-        if key not in config_A:
-            config_A.append(key)
+        key = query_name_clean.split(f".{base_domain}")[0]
+        if key not in config_subdomains:
+            config_subdomains.append(key)
             logging.info(f"SUBDOMAIN ADDED  ->{key}")
             # need to save to config
         else:
             logging.info(f"SUBDOMAIN ALREADY IN ->{key}")
     elif ":-:" in query_name:
         split_query_name = query_name.split(":-:")
-        key = split_query_name[0].split(f".{BASE_NAME}", 1)[0]
+        key = split_query_name[0].split(f".{base_domain}", 1)[0]
         if key != "*":
-            if key in config_A:
-                config_A.remove(key)
+            if key in config_subdomains:
+                config_subdomains.remove(key)
                 logging.info(f" DNS SUBDOMAIN REMOVED ->'{key}'")
             else:
                 logging.error(f" DNS  SUBDOMAIN NOT FOUND: '{key}'")
                 return False
         else:
-            for skey in config_A[:]:
-                config_A.remove(skey)
+            for skey in config_subdomains[:]:
+                config_subdomains.remove(skey)
             logging.info(f"ALL DNS SUBDOMAINS REMOVED")
     else:
         return False
@@ -262,15 +271,22 @@ def handle_a_modif(query_name):
 
 
 def dns_thread():
-    with UDPServer((HOST, PORT), DNSHandler) as server:
-        logging.info(f"DNS server listening on {HOST}:{PORT}")
-        server.serve_forever()
-
+    try:
+        with UDPServer((HOST, PORT), DNSHandler) as server:
+            logging.info(f"DNS server listening on {HOST}:{PORT}")
+            server.serve_forever()
+    except Exception as msg:
+        logging.error("Socket binding error: " + str(msg) + "\n" + "Exit...")
+        os._exit(1)
 
 def cnf_thread():
     context = zmq.Context()
     socket = context.socket(zmq.REP)
-    socket.bind("tcp://127.0.0.1:5555")
+    try:
+        socket.bind("tcp://127.0.0.1:5555")
+    except Exception as msg:
+        logging.error("Socket binding error: " + str(msg) + "\n" + "Exit...")
+        os._exit(1)
     logging.info(f"ipc server listening")
     while True:
         #  Wait for next request from client
@@ -279,10 +295,10 @@ def cnf_thread():
         logging.info(f"Received request: {message}")
         if "_TXT_:" in message:
             query = message.split("_TXT_:")[1]
-            if BASE_NAME not in query:
+            if base_domain not in query:
                 socket.send(b"FAIL: wrong domain")
 
-            elif f".{BASE_NAME}" not in query:
+            elif f".{base_domain}" not in query:
                 socket.send(b"FAIL: wrong subdomain")
 
             elif handle_txt_modif(query):
@@ -292,10 +308,10 @@ def cnf_thread():
                 socket.send(b"FAIL")
         elif "__A__:" in message:
             query = message.split("__A__:")[1]
-            if BASE_NAME not in query:
+            if base_domain not in query:
                 socket.send(b"FAIL: wrong domain")
 
-            elif f".{BASE_NAME}" not in query:
+            elif f".{base_domain}" not in query:
                 socket.send(b"FAIL: nxdomain")
 
             elif handle_a_modif(query):
@@ -305,6 +321,40 @@ def cnf_thread():
                 socket.send(b"FAIL")
         else:
             socket.send(b"???: request not understood")
+
+def get_subscription_list():
+    global base_domain
+    global config_subdomains
+    url = f'{ODOO_URL}{ODOO_API}'
+    try:
+        response = requests.get(url )
+
+    except requests.exceptions.ConnectionError as errc:
+        logging.error("Error Connecting: {}".format(errc))
+    except requests.exceptions.Timeout as errt:
+        logging.error(f"Timeout Error: {errt}")   
+    except requests.exceptions.RequestException as err:
+        logging.error(f"Request error: {err}")
+    except Exception as msg:
+        logging.error(f" -> DNS Error retrieving subscriptions: {msg}")
+        pass
+    else:
+        if response.status_code == 200:
+            response_data = json.loads(response.text)
+            try:
+                iot_domain = response_data['iot_domain']
+                base_domain = iot_domain
+                logging.info(f" --> DNS ODOO update Base Domain: {base_domain}")
+            except:
+                pass
+            try:
+                sub_domains = response_data['sub_domains']
+                config_subdomains = sub_domains
+                logging.info(f" --> DNS ODOO update Subdomains: {config_subdomains}")
+            except:
+                pass
+        else:
+            logging.error(f" -> DNS Error retrieving subscriptions: {response.status_code} {response.reason}")
 
 
 if __name__ == "__main__":
@@ -335,6 +385,16 @@ if __name__ == "__main__":
         PORT = config["port"]
     except KeyError:
         pass
+    try:
+        ODOO_URL = config["odoo_url"]
+    except KeyError:
+        pass
+
+
+    try:
+        LOG_LEVEL = config["log_level"]
+    except KeyError:
+        pass
 
     try:
         BASE_NAME = config["base_domain"]
@@ -342,7 +402,7 @@ if __name__ == "__main__":
         pass
 
     try:
-        LOG_LEVEL = config["log_level"]
+        SUB_DOMAINS = config["subdomains"]
     except KeyError:
         pass
 
@@ -353,18 +413,40 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     logging.info(f" -> DNS with config : {CONFIG_FILE}")
     logging.info(f" -> DNS server serving on {HOST}:{PORT}")
-    logging.info(f" -> with DNS Base Domain: {BASE_NAME}")
 
-    try:
-        config_A = config["subdomains"]
-    except KeyError:
-        pass
+    get_subscription_list()
+    # if on start up this failed, get the defaults or the values form the CONFIG File
+    if not base_domain:
+        base_domain = BASE_NAME
 
-    for a_key in config_A:
+    if not config_subdomains:
+        config_subdomains = SUB_DOMAINS
+
+    logging.info(f" -> with DNS Base Domain: {base_domain}")
+    for a_key in config_subdomains:
         logging.info(f" --> DNS with subdomains for  A  records {a_key}")
 
     _thread.start_new_thread(dns_thread, ())
     _thread.start_new_thread(cnf_thread, ())
+    
+    scheduler = BackgroundScheduler()
+    
+    #for daily Update 
+
+    scheduler.start()
+    trigger = CronTrigger(
+        year="*", month="*", day="*", hour="3", minute="0", second="5",timezone=str(tzlocal.get_localzone())
+    )
+
+    scheduler.add_job(
+        get_subscription_list,
+        trigger=trigger,
+        name="daily subscription update",
+    )
+
+    # for testing
+    #scheduler.add_job(get_subscription_list, 'interval', seconds=10)
+    #scheduler.start()
 
     while True:
         time.sleep(100)

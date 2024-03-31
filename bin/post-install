@@ -1,0 +1,6 @@
+#!/bin/bash
+#
+# bin/post_install
+#
+mv /usr/local/dns-iot-vct-post-install/dns-iot.service /etc/systemd/system/dns-iot.service
+mv /usr/local/dns-iot-vct-post-install/dns-iot-config.yaml /etc/dns-iot/dns-iot-config.yaml

@@ -26,24 +26,16 @@ With a base domain `iot.v-odoo.com` as defined in the `dns-config.yaml` and subd
 ```yaml
 host: 127.0.0.1
 port: 53
+odoo_url: https://www.v-consulting.biz
 base_domain: iot.v-odoo.com
 subdomains:
-  - psa
-  - sss
-  - tato
+  - danny
 ```
 
-## TXT records
+`basedomain` and `subdomains` are daily updated through vct_iot subcription app, daily at `3:00:05 AM`, the entries in th config are just defaults in case the odoo server is not reachable on start up of the service.
 
-test if present, see further under [Issuing Certificates](issuing_certificates) to add TXT records:
+`systemctl restart dns-iot.service` will reread the odoo IoT-subscriptions.
 
-```bash
-$> nslookup -q=txt _acmekey.sss.iot.v-odoo.com 127.0.0.1
-Server:		127.0.0.1
-Address:	127.0.0.1#53
-
-_acmekey.sss.iot.v-odoo.com	text = "myacme" "text" "record" "data"
-```
 
 ## Production setup
 
@@ -60,7 +52,7 @@ From that moment in time, dns queries for domain `iot.v-odoo.com` will arive at 
 
 #### usage stand alone: 
 ```bash
-python3 dns-iot.py [-c myconfig/file.yaml]
+python3 dns-iot.py [-cmyconfig/file.yaml]
 ```
 
 ### production usage
@@ -69,8 +61,17 @@ config file in `/etc/dns-iot/dns-iot-config.yaml`
 
 #### Install
 ```bash
-cp dns-iot.py /usr/bin/
+pip install dns_iot_vct-1.1.6-py3-none-any.whl
 ````
+
+From `/usr//local/dns-iot-vct-post-install`copy config and service in place
+
+```bash
+cp /usr/local/dns-iot-vct-post-install/dns-iot.service /etc/systemd/system/dns-iot.service
+
+mkdir -pv /etc/dns-iot
+cp /usr/local/dns-iot-vct-post-install/dns-iot-config.yaml /etc/dns-iot/dns-iot-config.yaml
+```
 
 #### enable and start
 
@@ -78,9 +79,9 @@ cp dns-iot.py /usr/bin/
 systemctl enable --now dns-iot.service
 ```
 
-check if service is running
+#### check if service is running
 ```bash
-systemctl enable --now dns-iot.service
+systemctl status dns-iot.service
 ```
 
 check logs with:
@@ -95,15 +96,32 @@ Our dns server already can add and remove TXT records by use of the dns query TX
 
 ### Add and remove TXT record
 
-**Note**: *Adding and removing records with the following method can only be done from the local server*
+**Note**: *Adding and removing records with the following method can only be done from the local server This needs ZMQ to connect to the local 127.0.0.1:5555 port for IPC, see example: (test_dns)[test_dns/dns_test.py]*
 
-Add a TXT record with the  **`:+:`** separator of key and value:
-```bash
-$>nslookup -q=txt "_acmekey.sss.iot.v-odoo.com:+:my_new_key" 127.0.0.1
-Server:		127.0.0.1
-Address:	127.0.0.1#53
+Add a TXT record with the  **`:+:`** separator of key and value, sample python code:
 
-_acmekey.sss.iot.v-odoo.com	text = "my_new_key"
+```python
+def add_txt_record(record_name: str, record_content: str):
+    context = zmq.Context()
+    answer=''
+    request=f'_TXT_:{record_name}:+:{record_content}'
+    socket = context.socket(zmq.REQ)
+    socket.connect("tcp://127.0.0.1:5555")
+    try:
+        socket.send(request.encode())
+    except Exception as e:
+        logger.error('Encountered error adding TXT record: {0}'.format(e))
+    try:
+        answer = socket.recv()
+    except Exception as e:
+        logger.error('Encountered error adding TXT record, receive reply: {0}'.format(e))
+    else:
+        answer = answer.decode("utf-8")
+        if answer == 'OK':
+            logger.info('Successfully added TXT  %s %s', record_name,record_content)
+        else:
+            logger.error('Encountered error add TXT, bad reply: {0}'.format(answer)) 
+    socket.close()
 ```
 
 Query -> simulate lets encript:
@@ -115,14 +133,9 @@ Address:	127.0.0.1#53
 _acmekey.sss.iot.v-odoo.com	text = "my_new_key"
 ```
 
-Delete from the *local server* => use the **`:-:`** suffix on the txt query:
-```bash
-$>nslookup -q=txt "_acmekey.sss.iot.v-odoo.com:-:" 127.0.0.1
-Server:		127.0.0.1
-Address:	127.0.0.1#53
+To Delete the TXT challence record from the *local server* , same as above add but use the **`:-:`** to delete.
+Without Key, all keys are deleted for that subdomain, with key only that key is deleted.
 
-_acmekey.sss.iot.v-odoo.com	text = ""
-```
+see also [certbot-dns-vctdns](https://github.com/v-odoo-testing/certbot-dns-vctdns) for production application to get letsencrpt dns certificates.
 
-## TODO:
- create a `certbot-dns-iot-vct` module that can update the dns server by using the **special** dns txt Query
+
