@@ -22,6 +22,9 @@ jobs:
         bin/build
         pip install dist/*.whl
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi  
+    - name: Run tests
+      run: |
+        bin/test
     - name: Analysing the code with pylint
       run: |
-        pylint $(git ls-files '*.py')
+        pylint $(git ls-files '*.py' | grep -v -E "test_dns|tests")

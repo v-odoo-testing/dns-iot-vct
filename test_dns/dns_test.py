@@ -6,6 +6,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# pylint: disable=logging-fstring-interpolation,broad-exception-caught
 
 def add_txt_record(record_name: str, record_content: str):
 
