@@ -195,22 +195,20 @@ class ZMQHandler:
 
     def __init__(self, url="tcp://127.0.0.1:5555"):
         self.socket = None
-        self.url=url
-        
+        self.url = url
 
     def __exit__(self, exc_type, exc_value, traceback):
         print("Danny __exit__")
         if self.socket:
             self.socket.close()
 
-    def __enter__(self):   
-        print("Danny __enter__") 
+    def __enter__(self):
+        print("Danny __enter__")
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
         self.socket.bind(self.url)
         logging.info("ipc server init")
         return self
-        
 
     def serve(self):
         """
@@ -224,13 +222,9 @@ class ZMQHandler:
             message = message.decode("utf-8")
             logging.debug("Received request: %s", message)
             if "_TXT_:" in message:
-                self.handle_ipc_message(
-                    message, "_TXT_:", self.handle_txt_modif
-                )
+                self.handle_ipc_message(message, "_TXT_:", self.handle_txt_modif)
             elif "__A__:" in message:
-                self.handle_ipc_message(
-                    message, "__A__:", self.handle_a_modif
-                )
+                self.handle_ipc_message(message, "__A__:", self.handle_a_modif)
             else:
                 self.socket.send(b"???: request not understood")
 
