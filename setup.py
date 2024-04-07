@@ -4,7 +4,7 @@
 
 from setuptools import find_packages, setup
 
-VERSION = "1.1.8"
+VERSION = "1.1.9"
 
 install_requires = [
     "setuptools>=41.6.0",
@@ -15,7 +15,7 @@ install_requires = [
     "dnslib",
     "ipaddress",
     "pyjson>=1.4",
-    'urllib3==1.26.6;python_version>="3.8" and python_version<"3.11"',
+    'urllib3==1.26.18;python_version>="3.8" and python_version<"3.11"',
     "requests",
     "apscheduler==3.10.4",
 ]
