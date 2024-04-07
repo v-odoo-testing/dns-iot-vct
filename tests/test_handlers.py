@@ -1,4 +1,5 @@
 import unittest
+
 import dns_iot.dns_iot
 from dns_iot.dns_iot import ZMQHandler
 
@@ -10,9 +11,7 @@ class TestHandleMethods(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.zmq_server = ZMQHandler()
-        dns_iot.dns_iot.BASE_DOMAIN = (
-            "my.test.comain"  # .globals()["BASE_DOMAIN"]='my.test.comain'
-        )
+        dns_iot.dns_iot.BASE_DOMAIN = "my.test.comain"  # .globals()["BASE_DOMAIN"]='my.test.comain'
         dns_iot.dns_iot.CONFIG_SUBDOMAINS = []
 
     def test_add_subdomain(self):

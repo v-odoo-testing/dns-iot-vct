@@ -26,25 +26,25 @@ Don't forget to open firewall on port 53/udp
 # pylint: disable=logging-fstring-interpolation,broad-exception-caught
 
 
-import os
-import logging
+import _thread
 
 # from optparse import OptionParser
 import argparse
-import ipaddress
-from socketserver import UDPServer, BaseRequestHandler
 import binascii
-import _thread
-import time
+import ipaddress
 import json
+import logging
+import os
+import time
+from socketserver import BaseRequestHandler, UDPServer
 
-import yaml
-from dnslib import DNSRecord, DNSHeader, RR, QTYPE
-import tzlocal
-import zmq
 import requests
+import tzlocal
+import yaml
+import zmq
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from dnslib import QTYPE, RR, DNSHeader, DNSRecord
 
 ODOO_URL = "https://www.v-consulting.biz"
 ODOO_API = "/vct_iot_subscription/list"
@@ -71,22 +71,14 @@ class DNSHandler(BaseRequestHandler):
 
     def _refused(self, query_name, query_type, request):
         client, port = self.client_address
-        logging.error(
-            f" DNS {query_type}:{query_name} from HOST:{client}:{port} wrong domain"
-        )
-        reply = DNSRecord(
-            DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5), q=request.q
-        )
+        logging.error(f" DNS {query_type}:{query_name} from HOST:{client}:{port} wrong domain")
+        reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5), q=request.q)
         return reply
 
     def _nxdomain(self, query_name, query_type, request):
         client, port = self.client_address
-        logging.error(
-            f"DNS {query_type}:{query_name} from HOST:{client}:{port} wrong sub domain"
-        )
-        reply = DNSRecord(
-            DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=3), q=request.q
-        )
+        logging.error(f"DNS {query_type}:{query_name} from HOST:{client}:{port} wrong sub domain")
+        reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=3), q=request.q)
         return reply
 
     def _formerr(self, data):
@@ -106,9 +98,7 @@ class DNSHandler(BaseRequestHandler):
         for key in CONFIG_SUBDOMAINS:
             if f".{key}.{BASE_DOMAIN}." in query_name:
                 # here happens the magic
-                ip_address = query_name.split(f".{key}.{BASE_DOMAIN}", 1)[0].replace(
-                    "-", "."
-                )
+                ip_address = query_name.split(f".{key}.{BASE_DOMAIN}", 1)[0].replace("-", ".")
                 try:
                     ip_check = ipaddress.ip_address(ip_address)
                 except ValueError:
@@ -161,9 +151,7 @@ class DNSHandler(BaseRequestHandler):
 
         client, port = self.client_address
 
-        reply = DNSRecord(
-            DNSHeader(id=request.header.id, qr=1, aa=1, ra=1), q=request.q
-        )
+        reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1), q=request.q)
 
         qname = request.q.qname
         query_name = str(qname).lower()
@@ -239,11 +227,7 @@ class ZMQHandler:
         }
         query = message.split(prefix)[1]
         error = next(
-            (
-                error_msg
-                for error_msg, condition in error_messages.items()
-                if condition(query)
-            ),
+            (error_msg for error_msg, condition in error_messages.items() if condition(query)),
             None,
         )
         if error:
@@ -304,9 +288,7 @@ class ZMQHandler:
         # Remove key/value from CONFIG_TXT_RECORDS
         if prefix:
             for key_value in CONFIG_TXT_RECORDS[:]:
-                if key_value[key] and (
-                    (value and key_value[key] == value) or not value
-                ):
+                if key_value[key] and ((value and key_value[key] == value) or not value):
                     CONFIG_TXT_RECORDS.remove(key_value)
                     return key, value
         return None, None

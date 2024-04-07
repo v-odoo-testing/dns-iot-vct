@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
 import logging
+
 import zmq
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +28,7 @@ def add_txt_record(record_name: str, record_content: str):
     try:
         answer = socket.recv()
     except Exception as e:
-        logger.error(
-            "Encountered error adding TXT record, receive reply: {0}".format(e)
-        )
+        logger.error("Encountered error adding TXT record, receive reply: {0}".format(e))
     else:
         answer = answer.decode("utf-8")
         if answer == "OK":
@@ -56,17 +54,13 @@ def add_a_record(record_name: str):
     try:
         answer = socket.recv()
     except Exception as e:
-        logger.error(
-            "Encountered error adding TXT record, receive reply: {0}".format(e)
-        )
+        logger.error("Encountered error adding TXT record, receive reply: {0}".format(e))
     else:
         answer = answer.decode("utf-8")
         if answer == "OK":
             logger.info("Successfully added SUBDOMAIN  %s", record_name)
         else:
-            logger.error(
-                "Encountered error add DOMAIN %s, bad reply: {0}".format(answer)
-            )
+            logger.error("Encountered error add DOMAIN %s, bad reply: {0}".format(answer))
     socket.close()
 
 
@@ -91,17 +85,13 @@ def del_txt_record(record_name: str, record_content: str):
     try:
         answer = socket.recv()
     except Exception as e:
-        logger.error(
-            "Encountered error adding TXT record, receive reply: {0}".format(e)
-        )
+        logger.error("Encountered error adding TXT record, receive reply: {0}".format(e))
     else:
         answer = answer.decode("utf-8")
         if "OK" == answer:
             logger.info("Successfully removed record %s TXT %s", record_name, answer)
         else:
-            logger.error(
-                "Encountered error remove TXT record, bad reply: {0}".format(answer)
-            )
+            logger.error("Encountered error remove TXT record, bad reply: {0}".format(answer))
     socket.close()
 
 
@@ -128,9 +118,7 @@ def del_a_record(record_name: str):
         if "OK" == answer:
             logger.info("Successfully removed domain(s) %s", record_name)
         else:
-            logger.error(
-                "Encountered error remove subdomains, bad reply: {0}".format(answer)
-            )
+            logger.error("Encountered error remove subdomains, bad reply: {0}".format(answer))
     socket.close()
 
 
