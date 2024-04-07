@@ -52,16 +52,23 @@ From that moment in time, dns queries for domain `iot.v-odoo.com` will arive at 
 
 #### usage stand alone: 
 ```bash
-python3 dns-iot.py [-cmyconfig/file.yaml]
+python3.8 dns-iot.py [-cmyconfig/file.yaml]
 ```
 
 ### production usage
 
 config file in `/etc/dns-iot/dns-iot-config.yaml`
 
-#### Install
 ```bash
-pip install dns_iot_vct-1.1.6-py3-none-any.whl
+bin/build
+scp dns_iot_vct-*-py3-none-any.whl vct_remote_root
+```
+
+#### Install
+on server:
+
+```bash
+pip install dns_iot_vct-1.1.8-py3-none-any.whl
 ````
 
 From `/usr//local/dns-iot-vct-post-install`copy config and service in place

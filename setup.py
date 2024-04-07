@@ -3,7 +3,7 @@ import os,sys
 from setuptools import find_packages
 from setuptools import setup
    
-version = '1.1.7'
+version = '1.1.8'
 
 install_requires = [
     'setuptools>=41.6.0',
@@ -14,8 +14,7 @@ install_requires = [
     'dnslib',
     'ipaddress',
     'pyjson>=1.4',
-    'urllib3==1.24.3;python_version<"3.7"',
-    'urllib3==1.26.6;python_version>="3.7" and python_version<"3.11"', 
+    'urllib3==1.26.6;python_version>="3.8" and python_version<"3.11"', 
     'requests',
     'apscheduler==3.10.4'
 ]
@@ -28,7 +27,7 @@ setup(
     author="Danny Goossen",
     author_email='danny@v-consulting.biz',
     license='MIT',
-    python_requires='>=3.6',
+    python_requires='>=3.8',
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Environment :: Plugins',
@@ -53,5 +52,7 @@ setup(
     include_package_data=True,
     install_requires=install_requires,
     scripts=['dns_iot/dns_iot.py'],
-    data_files=[("dns-iot-vct-post-install",['etc/systemd/system/dns-iot.service','etc/dns-iot/dns-iot-config.yaml'])]
+    data_files=[("dns-iot-vct-post-install",['etc/systemd/system/dns-iot.service','etc/dns-iot/dns-iot-config.yaml'])],
+    test_suite='tests'
+
 )

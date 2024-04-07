@@ -21,3 +21,4 @@ Credentials
 
 => disabled, not needed, access is limited for 127.0.0.1
 """
+from dns_iot import *

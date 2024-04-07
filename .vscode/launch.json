@@ -14,12 +14,13 @@
         },
         {
             "name": "Python: test dns_iot.py",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
-            "program": "test_dns/dns_test.py",
+            "module": "unittest",
+            "args" :["tests.test_handlers.TestHandleMethods"],
             "console": "integratedTerminal",
             "justMyCode": true,
-            "sudo": true
+            //"sudo": true
         }
     ]
 }
