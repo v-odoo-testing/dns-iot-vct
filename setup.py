@@ -1,9 +1,11 @@
-import os, sys
+"""
+ Setup
+"""
 
 from setuptools import find_packages
 from setuptools import setup
 
-version = "1.1.8"
+VERSION = "1.1.8"
 
 install_requires = [
     "setuptools>=41.6.0",
@@ -21,7 +23,7 @@ install_requires = [
 
 setup(
     name="dns-iot-vct",
-    version=version,
+    version=VERSION,
     description="DNS-IOT-VCT returns for a base domain and subdomain a parsed local ip",
     url="https://github.com/v-odoo-testing/dns-iot-vct",
     author="Danny Goossen",

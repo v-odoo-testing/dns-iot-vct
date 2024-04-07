@@ -23,7 +23,6 @@ To enable this server, add a NS record for a subdomain pointing to this server.
 Don't forget to open firewall on port 53/udp
 """
 
-# TODO need to do some more linting fixes
 # pylint: disable=logging-fstring-interpolation,broad-exception-caught
 
 

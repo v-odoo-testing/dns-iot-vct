@@ -4,6 +4,7 @@ from dns_iot.dns_iot import ZMQHandler
 
 # pylint: disable=logging-fstring-interpolation,broad-exception-caught
 
+
 class TestHandleMethods(unittest.TestCase):
 
     @classmethod
