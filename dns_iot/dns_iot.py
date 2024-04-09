@@ -182,7 +182,7 @@ class ZMQHandler:
     Class handling the ZMQ communications
     """
 
-    def __init__(self, url="tcp://127.0.0.1:5555"):
+    def __init__(self, url="tcp://127.0.0.1:35501"):
         self.socket = None
         self.url = url
 
@@ -195,6 +195,7 @@ class ZMQHandler:
         print("Danny __enter__")
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
+        print(f"socket bind to {self.url}")
         self.socket.bind(self.url)
         logging.info("ipc server init")
         return self

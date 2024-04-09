@@ -17,7 +17,7 @@
             "type": "debugpy",
             "request": "launch",
             "module": "unittest",
-            "args" :["tests.test_handlers.TestHandleMethods"],
+            "args" :["tests.test_handlers","-v"],
             "console": "integratedTerminal",
             "justMyCode": true,
             //"sudo": true
