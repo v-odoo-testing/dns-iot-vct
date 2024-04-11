@@ -56,7 +56,10 @@ setup(
     data_files=[
         (
             "dns-iot-vct-post-install",
-            ["etc/systemd/system/dns-iot.service", "etc/dns-iot/dns-iot-config.yaml"],
+            [
+                "etc/systemd/system/dns-iot.service",
+                "etc/dns-iot/dns-iot-config.yaml",
+            ],
         )
     ],
     test_suite="tests",
