@@ -116,7 +116,8 @@ class DNSHandler(BaseRequestHandler):
             reply.add_answer(*RR.fromZone(f'{query_name} IN CAA 0 issuewild "letsencrypt.org"'))
             reply.add_answer(
                 *RR.fromZone(
-                    f'{query_name} IN CAA 128 issue "letsencrypt.org;accounturi=https://acme-v02.api.letsencrypt.org/acme/acct/1646511237"'
+                    f'{query_name} IN CAA 128 issue \
+                        "letsencrypt.org;accounturi=https://acme-v02.api.letsencrypt.org/acme/acct/1646511237"'
                 )
             )
         elif not passthrough:
@@ -182,6 +183,9 @@ class DNSHandler(BaseRequestHandler):
         return reply
 
     def handle(self, query_name, query_type, request):
+        """
+        DNS QUERY Handler
+        """
         data = self.request[0]  # .strip()
         try:
             request = DNSRecord.parse(data)
