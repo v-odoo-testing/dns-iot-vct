@@ -71,24 +71,14 @@ class DNSHandler(BaseRequestHandler):
 
     def _refused(self, query_name, query_type, request):
         client, port = self.client_address
-        logging.error(
-            f" DNS {query_type}:{query_name} from HOST:{client}:{port} wrong domain"
-        )
-        reply = DNSRecord(
-            DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5),
-            q=request.q,
-        )
+        logging.error(f" DNS {query_type}:{query_name} from HOST:{client}:{port} wrong domain")
+        reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=5), q=request.q)
         return reply
 
     def _nxdomain(self, query_name, query_type, request):
         client, port = self.client_address
-        logging.error(
-            f"DNS {query_type}:{query_name} from HOST:{client}:{port} wrong sub domain"
-        )
-        reply = DNSRecord(
-            DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=3),
-            q=request.q,
-        )
+        logging.error(f"DNS {query_type}:{query_name} from HOST:{client}:{port} wrong sub domain")
+        reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1, rcode=3), q=request.q)
         return reply
 
     def _formerr(self, data):
@@ -98,19 +88,13 @@ class DNSHandler(BaseRequestHandler):
             f"DNS {binascii.hexlify(bytearray(data))}from HOST:{client}:{port} \
                 DNS Query Format Error"
         )
-        reply = DNSRecord(
-            DNSHeader(id=request_id, qr=1, aa=1, ra=1, rcode=1), q=""
-        )
+        reply = DNSRecord(DNSHeader(id=request_id, qr=1, aa=1, ra=1, rcode=1), q="")
         return reply
 
-    def _handle_SOA_record(
-        self, query_name, query_type, request, reply, passthrough=False
-    ):
+    def _handle_SOA_record(self, query_name, query_type, request, reply, passthrough=False):
         client, port = self.client_address
         if f"{BASE_DOMAIN}." == query_name:
-            logging.info(
-                f"DNS {query_type}:{query_name} from HOST:{client}:{port}"
-            )
+            logging.info(f"DNS {query_type}:{query_name} from HOST:{client}:{port}")
             reply.add_answer(
                 *RR.fromZone(
                     f"{query_name} IN SOA remote.v-odoo.com dns.v-odoo.com 1 7200 900 1209600 86400"
@@ -120,24 +104,16 @@ class DNSHandler(BaseRequestHandler):
             reply = self._nxdomain(query_name, query_type, request)
         return reply
 
-    def _handle_CAA_record(
-        self, query_name, query_type, request, reply, passthrough=False
-    ):
+    def _handle_CAA_record(self, query_name, query_type, request, reply, passthrough=False):
         client, port = self.client_address
         if f"{BASE_DOMAIN}." == query_name:
-            logging.info(
-                f"DNS {query_type}:{query_name} from HOST:{client}:{port}"
-            )
+            logging.info(f"DNS {query_type}:{query_name} from HOST:{client}:{port}")
             reply.add_answer(
                 *RR.fromZone(
                     f'{query_name} IN CAA 0 issue "letsencrypt.org;validationmethods=dns-01"'
                 )
             )
-            reply.add_answer(
-                *RR.fromZone(
-                    f'{query_name} IN CAA 0 issuewild "letsencrypt.org"'
-                )
-            )
+            reply.add_answer(*RR.fromZone(f'{query_name} IN CAA 0 issuewild "letsencrypt.org"'))
             reply.add_answer(
                 *RR.fromZone(
                     f'{query_name} IN CAA 128 issue "letsencrypt.org;accounturi=https://acme-v02.api.letsencrypt.org/acme/acct/1646511237"'
@@ -147,27 +123,18 @@ class DNSHandler(BaseRequestHandler):
             reply = self._nxdomain(query_name, query_type, request)
         return reply
 
-    def _handle_subdomains(
-        self, query_name, query_type, request, reply, passthrough=False
-    ):
+    def _handle_subdomains(self, query_name, query_type, request, reply, passthrough=False):
         ip_address = None
         client, port = self.client_address
         # Find the key that matches the query_name using list comprehension
         matching_key = next(
-            (
-                key
-                for key in CONFIG_SUBDOMAINS
-                if f".{key}.{BASE_DOMAIN}." in query_name
-            ),
-            None,
+            (key for key in CONFIG_SUBDOMAINS if f".{key}.{BASE_DOMAIN}." in query_name), None
         )
 
         # If matching_key is found, perform the magic
         if matching_key is not None:
             # here happens the magic
-            ip_address = query_name.split(f".{key}.{BASE_DOMAIN}", 1)[
-                0
-            ].replace("-", ".")
+            ip_address = query_name.split(f".{key}.{BASE_DOMAIN}", 1)[0].replace("-", ".")
             try:
                 ip_check = ipaddress.ip_address(ip_address)
             except ValueError:
@@ -177,9 +144,7 @@ class DNSHandler(BaseRequestHandler):
                     f"DNS {query_type}:{query_name} from HOST:{client}:{port} -> {ip_check}"
                 )
                 if query_type == "A":
-                    reply.add_answer(
-                        *RR.fromZone(f"{query_name} 86400 A {ip_address}")
-                    )
+                    reply.add_answer(*RR.fromZone(f"{query_name} 86400 A {ip_address}"))
                 else:
                     reply.add_answer(
                         *RR.fromZone(
@@ -190,9 +155,7 @@ class DNSHandler(BaseRequestHandler):
             reply = self._nxdomain(query_name, query_type, request)
         return reply
 
-    def _handle_TXT_record(
-        self, query_name, query_type, request, reply, passthrough=False
-    ):
+    def _handle_TXT_record(self, query_name, query_type, request, reply, passthrough=False):
         found = False
         client, port = self.client_address
         prefix = None
@@ -213,9 +176,7 @@ class DNSHandler(BaseRequestHandler):
                     logging.info(
                         f" DNS {query_type}:{query_name} from HOST:{client}:{port} -> {print_value}"
                     )
-                    reply.add_answer(
-                        *RR.fromZone(f"{query_name} 60 TXT {value}")
-                    )
+                    reply.add_answer(*RR.fromZone(f"{query_name} 60 TXT {value}"))
         if not found and not passthrough:
             reply = self._nxdomain(query_name, query_type, request)
         return reply
@@ -231,9 +192,7 @@ class DNSHandler(BaseRequestHandler):
 
         client, port = self.client_address
 
-        reply = DNSRecord(
-            DNSHeader(id=request.header.id, qr=1, aa=1, ra=1), q=request.q
-        )
+        reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1), q=request.q)
 
         qname = request.q.qname
         query_name = str(qname).lower()
@@ -259,11 +218,7 @@ class DNSHandler(BaseRequestHandler):
             if query_type == query_type_key:
                 for handler, handler_query_type in handler_list:
                     reply = handler(
-                        query_name,
-                        handler_query_type,
-                        request,
-                        reply,
-                        query_type_key == "ANY",
+                        query_name, handler_query_type, request, reply, query_type_key == "ANY"
                     )
                 break
         else:
@@ -308,9 +263,7 @@ class ZMQHandler:
             message = message.decode("utf-8")
             logging.debug("Received request: %s", message)
             if "_TXT_:" in message:
-                self.handle_ipc_message(
-                    message, "_TXT_:", self.handle_txt_modif
-                )
+                self.handle_ipc_message(message, "_TXT_:", self.handle_txt_modif)
             elif "__A__:" in message:
                 self.handle_ipc_message(message, "__A__:", self.handle_a_modif)
             else:
@@ -326,11 +279,7 @@ class ZMQHandler:
         }
         query = message.split(prefix)[1]
         error = next(
-            (
-                error_msg
-                for error_msg, condition in error_messages.items()
-                if condition(query)
-            ),
+            (error_msg for error_msg, condition in error_messages.items() if condition(query)),
             None,
         )
         if error:
@@ -359,9 +308,7 @@ class ZMQHandler:
             key, value = self._remove_key_value(query_name)
             if key is not None:
                 if value:
-                    logging.info(
-                        " DNS TXT KEY/VALUE REMOVED -> '%s': '%s'", key, value
-                    )
+                    logging.info(" DNS TXT KEY/VALUE REMOVED -> '%s': '%s'", key, value)
                 else:
                     logging.info(" DNS TXT KEY REMOVED -> '%s'", key)
             else:
@@ -393,9 +340,7 @@ class ZMQHandler:
         # Remove key/value from CONFIG_TXT_RECORDS
         if prefix:
             for key_value in CONFIG_TXT_RECORDS[:]:
-                if key_value[key] and (
-                    (value and key_value[key] == value) or not value
-                ):
+                if key_value[key] and ((value and key_value[key] == value) or not value):
                     CONFIG_TXT_RECORDS.remove(key_value)
                     return key, value
         return None, None
@@ -455,17 +400,13 @@ def get_subscription_list():
             try:
                 iot_domain = response_data["iot_domain"]
                 globals()["BASE_DOMAIN"] = iot_domain
-                logging.info(
-                    " --> DNS ODOO update Base Domain: %s", BASE_DOMAIN
-                )
+                logging.info(" --> DNS ODOO update Base Domain: %s", BASE_DOMAIN)
             except KeyError:
                 pass
             try:
                 sub_domains = response_data["sub_domains"]
                 globals()["CONFIG_SUBDOMAINS"] = sub_domains
-                logging.info(
-                    " --> DNS ODOO update Subdomains: %s", CONFIG_SUBDOMAINS
-                )
+                logging.info(" --> DNS ODOO update Subdomains: %s", CONFIG_SUBDOMAINS)
             except KeyError:
                 pass
         else:

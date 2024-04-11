@@ -19,4 +19,4 @@ repos:
       language: python
       types: [python]
       language_version: python3.8
-      args: ["--line-length=80"]
+      args: ["--line-length=100"]
