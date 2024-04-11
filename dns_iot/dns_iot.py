@@ -117,7 +117,7 @@ class DNSHandler(BaseRequestHandler):
             reply.add_answer(
                 *RR.fromZone(
                     f'{query_name} IN CAA 128 issue \
-                        "letsencrypt.org;accounturi=https://acme-v02.api.letsencrypt.org/acme/acct/1646511237"'
+                "letsencrypt.org;accounturi=https://acme-v02.api.letsencrypt.org/acme/acct/1646511237"'
                 )
             )
         elif not passthrough:
