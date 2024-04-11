@@ -91,29 +91,71 @@ class DNSHandler(BaseRequestHandler):
         reply = DNSRecord(DNSHeader(id=request_id, qr=1, aa=1, ra=1, rcode=1), q="")
         return reply
 
-    def _handle_a_record(self, query_name, query_type, request, reply):
-        ip_address = None
+    def _handle_SOA_record(self, query_name, query_type, request, reply, passthrough=False):
         client, port = self.client_address
-        found = False
-        for key in CONFIG_SUBDOMAINS:
-            if f".{key}.{BASE_DOMAIN}." in query_name:
-                # here happens the magic
-                ip_address = query_name.split(f".{key}.{BASE_DOMAIN}", 1)[0].replace("-", ".")
-                try:
-                    ip_check = ipaddress.ip_address(ip_address)
-                except ValueError:
-                    pass
-                else:
-                    found = True
-                    logging.info(
-                        f"DNS {query_type}:{query_name} from HOST:{client}:{port} -> {ip_check}"
-                    )
-                    reply.add_answer(*RR.fromZone(f"{query_name} 86400 A {ip_address}"))
-        if not found:
+        if f"{BASE_DOMAIN}." == query_name:
+            logging.info(f"DNS {query_type}:{query_name} from HOST:{client}:{port}")
+            reply.add_answer(
+                *RR.fromZone(
+                    f"{query_name} IN SOA remote.v-odoo.com dns.v-odoo.com 1 7200 900 1209600 86400"
+                )
+            )
+        elif not passthrough:
             reply = self._nxdomain(query_name, query_type, request)
         return reply
 
-    def _handle_txt(self, query_name, query_type, request, reply):
+    def _handle_CAA_record(self, query_name, query_type, request, reply, passthrough=False):
+        client, port = self.client_address
+        if f"{BASE_DOMAIN}." == query_name:
+            logging.info(f"DNS {query_type}:{query_name} from HOST:{client}:{port}")
+            reply.add_answer(
+                *RR.fromZone(
+                    f'{query_name} IN CAA 0 issue "letsencrypt.org;validationmethods=dns-01"'
+                )
+            )
+            reply.add_answer(*RR.fromZone(f'{query_name} IN CAA 0 issuewild "letsencrypt.org"'))
+            reply.add_answer(
+                *RR.fromZone(
+                    f'{query_name} IN CAA 128 issue "letsencrypt.org;accounturi=https://acme-v02.api.letsencrypt.org/acme/acct/1646511237"'
+                )
+            )
+        elif not passthrough:
+            reply = self._nxdomain(query_name, query_type, request)
+        return reply
+
+    def _handle_subdomains(self, query_name, query_type, request, reply, passthrough=False):
+        ip_address = None
+        client, port = self.client_address
+        # Find the key that matches the query_name using list comprehension
+        matching_key = next(
+            (key for key in CONFIG_SUBDOMAINS if f".{key}.{BASE_DOMAIN}." in query_name), None
+        )
+
+        # If matching_key is found, perform the magic
+        if matching_key is not None:
+            # here happens the magic
+            ip_address = query_name.split(f".{key}.{BASE_DOMAIN}", 1)[0].replace("-", ".")
+            try:
+                ip_check = ipaddress.ip_address(ip_address)
+            except ValueError:
+                pass
+            else:
+                logging.info(
+                    f"DNS {query_type}:{query_name} from HOST:{client}:{port} -> {ip_check}"
+                )
+                if query_type == "A":
+                    reply.add_answer(*RR.fromZone(f"{query_name} 86400 A {ip_address}"))
+                else:
+                    reply.add_answer(
+                        *RR.fromZone(
+                            f"{query_name} 1800 IN HTTPS 1 . alpn=http/1.0 ipv4hint={ip_address}"
+                        )
+                    )
+        elif not passthrough:
+            reply = self._nxdomain(query_name, query_type, request)
+        return reply
+
+    def _handle_TXT_record(self, query_name, query_type, request, reply, passthrough=False):
         found = False
         client, port = self.client_address
         prefix = None
@@ -135,16 +177,15 @@ class DNSHandler(BaseRequestHandler):
                         f" DNS {query_type}:{query_name} from HOST:{client}:{port} -> {print_value}"
                     )
                     reply.add_answer(*RR.fromZone(f"{query_name} 60 TXT {value}"))
-        if not found:
+        if not found and not passthrough:
             reply = self._nxdomain(query_name, query_type, request)
         return reply
 
-    def handle(self):
+    def handle(self, query_name, query_type, request):
         data = self.request[0]  # .strip()
         try:
             request = DNSRecord.parse(data)
-        except Exception as e:
-            print(e)
+        except Exception:
             reply = self._formerr(data)
             self.request[1].sendto(reply.pack(), self.client_address)
             return
@@ -158,22 +199,33 @@ class DNSHandler(BaseRequestHandler):
         qtype = request.q.qtype
         query_type = QTYPE[qtype]
 
-        if BASE_DOMAIN not in query_name:
-            reply = self._refused(query_name, query_type, request)
+        handlers = {
+            "ANY": [
+                (self._handle_SOA_record, "SOA"),
+                (self._handle_CAA_record, "CAA"),
+                (self._handle_subdomains, "A"),
+                (self._handle_subdomains, "HTTPS"),
+                (self._handle_TXT_record, "TXT"),
+            ],
+            "SOA": [(self._handle_SOA_record, "SOA")],
+            "CAA": [(self._handle_CAA_record, "CAA")],
+            "A": [(self._handle_subdomains, "A")],
+            "HTTPS": [(self._handle_subdomains, "HTTPS")],
+            "TXT": [(self._handle_TXT_record, "TXT")],
+        }
 
-        elif f".{BASE_DOMAIN}" not in query_name:
-            reply = self._nxdomain(query_name, query_type, request)
-
-        elif query_type == "A":
-            reply = self._handle_a_record(query_name, query_type, request, reply)
-
-        elif query_type == "TXT":
-            reply = self._handle_txt(query_name, query_type, request, reply)
-
+        for query_type_key, handler_list in handlers.items():
+            if query_type == query_type_key:
+                for handler, handler_query_type in handler_list:
+                    reply = handler(
+                        query_name, handler_query_type, request, reply, query_type_key == "ANY"
+                    )
+                break
         else:
             logging.error(
-                f" DNS {query_type}:{query_name} from HOST:{client}:{port} unsupported type"
+                f"DNS {query_type}:{query_name} from HOST:{client}:{port} unsupported type"
             )
+
         self.request[1].sendto(reply.pack(), self.client_address)
 
 
