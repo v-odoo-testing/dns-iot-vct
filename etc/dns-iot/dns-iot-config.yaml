@@ -1,7 +1,10 @@
 host: 127.0.0.1
 port: 53
 odoo_url: https://www.v-consulting.biz
-base_domain: iotdns.v-odoo.com
+base_domain: iot.v-odoo.com
+base_dns: remote.v-odoo.com
+base_email: dns.v-odoo.com
+base_acc_uri: https://acme-v02.api.letsencrypt.org/acme/acct/1646511237 
 subdomains:
   - danny
 log_level: DEBUG

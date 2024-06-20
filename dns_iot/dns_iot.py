@@ -46,14 +46,20 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dnslib import QTYPE, RR, DNSHeader, DNSRecord
 
-ODOO_URL = "https://www.v-consulting.biz"
+config = {}
 ODOO_API = "/vct_iot_subscription/list"
+
+ODOO_URL = "https://www.v-consulting.biz"
 BASE_NAME = "iot.v-odoo.com"
+BASE_DNS = None
+BASE_EMAIL = None
+BASE_AAC_URI = None
 HOST = "127.0.0.1"
 PORT = 53
 LOG_LEVEL = "info"
 
-config = {}
+SUB_DOMAINS = None
+
 CONFIG_SUBDOMAINS = None
 BASE_DOMAIN = None
 CONFIG_TXT_RECORDS = []
@@ -93,11 +99,11 @@ class DNSHandler(BaseRequestHandler):
 
     def _handle_SOA_record(self, query_name, query_type, request, reply, passthrough=False):
         client, port = self.client_address
-        if f"{BASE_DOMAIN}." == query_name:
+        if f"{BASE_DOMAIN}." == query_name and BASE_DNS and BASE_EMAIL:
             logging.info(f"DNS {query_type}:{query_name} from HOST:{client}:{port}")
             reply.add_answer(
                 *RR.fromZone(
-                    f"{query_name} IN SOA remote.v-odoo.com dns.v-odoo.com 1 7200 900 1209600 86400"
+                    f"{query_name} IN SOA {BASE_DNS} {BASE_EMAIL} 1 7200 900 1209600 86400"
                 )
             )
         elif not passthrough:
@@ -114,12 +120,12 @@ class DNSHandler(BaseRequestHandler):
                 )
             )
             reply.add_answer(*RR.fromZone(f'{query_name} IN CAA 0 issuewild "letsencrypt.org"'))
-            reply.add_answer(
-                *RR.fromZone(
-                    f'{query_name} IN CAA 128 issue \
-                "letsencrypt.org;accounturi=https://acme-v02.api.letsencrypt.org/acme/acct/1646511237"'
+            if BASE_AAC_URI:
+                reply.add_answer(
+                    *RR.fromZone(
+                        f'{query_name} IN CAA 128 issue "letsencrypt.org;accounturi={BASE_AAC_URI}"'
+                    )
                 )
-            )
         elif not passthrough:
             reply = self._nxdomain(query_name, query_type, request)
         return reply
@@ -135,7 +141,7 @@ class DNSHandler(BaseRequestHandler):
         # If matching_key is found, perform the magic
         if matching_key is not None:
             # here happens the magic
-            ip_address = query_name.split(f".{key}.{BASE_DOMAIN}", 1)[0].replace("-", ".")
+            ip_address = query_name.split(f".{matching_key}.{BASE_DOMAIN}", 1)[0].replace("-", ".")
             try:
                 ip_check = ipaddress.ip_address(ip_address)
             except ValueError:
@@ -182,7 +188,7 @@ class DNSHandler(BaseRequestHandler):
             reply = self._nxdomain(query_name, query_type, request)
         return reply
 
-    def handle(self, query_name, query_type, request):
+    def handle(self):
         """
         DNS QUERY Handler
         """
@@ -448,7 +454,6 @@ def ipc_thread():
 
 if __name__ == "__main__":
 
-    CONFIG_FILE = ""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file",
@@ -457,51 +462,46 @@ if __name__ == "__main__":
         help="config file for dns-iot",
     )
     args = parser.parse_args()
-    CONFIG_FILE = args.config_file
+
+    config_file = args.config_file
 
     try:
-        with open(CONFIG_FILE, encoding="utf-8") as stream:
+        with open(config_file, encoding="utf-8") as stream:
             config = yaml.safe_load(stream)
     except OSError:
         pass
 
-    try:
-        HOST = config["host"]
-    except KeyError:
-        pass
+    configurations = {
+        "host": HOST,
+        "port": PORT,
+        "odoo_url": ODOO_URL,
+        "log_level": LOG_LEVEL,
+        "base_domain": BASE_NAME,
+        "base_dns": BASE_DNS,
+        "base_email": BASE_EMAIL,
+        "base_acc_uri": BASE_AAC_URI,
+        "subdomains": SUB_DOMAINS,
+    }
 
-    try:
-        PORT = config["port"]
-    except KeyError:
-        pass
-    try:
-        ODOO_URL = config["odoo_url"]
-    except KeyError:
-        pass
+    for key, value in configurations.items():
+        try:
+            configurations[key] = config[key]
+        except KeyError:
+            pass
 
-    try:
-        LOG_LEVEL = config["log_level"]
-    except KeyError:
-        pass
-
-    try:
-        BASE_NAME = config["BASE_DOMAIN"]
-    except KeyError:
-        pass
-
-    try:
-        SUB_DOMAINS = config["subdomains"]
-    except KeyError:
-        pass
+    HOST, PORT, ODOO_URL, LOG_LEVEL, BASE_NAME, BASE_DNS, BASE_EMAIL, BASE_AAC_URI, SUB_DOMAINS = (
+        configurations.values()
+    )
 
     # if LOG_LEVEL in "DEBUG":
     #     logging.basicConfig(level=logging.DEBUG,format='%(module)s-%(funcName)s: %(message)s')
     #     logging.debug("Debug level logging started")
     # else:
     logging.basicConfig(level=logging.INFO)
-    logging.info(f" -> DNS with config : {CONFIG_FILE}")
+    logging.info(f" -> DNS with config : {config_file}")
     logging.info(f" -> DNS server serving on {HOST}:{PORT}")
 
+    logging.info(f" -> Get Subscriptions from '{ODOO_URL}'")
     get_subscription_list()
     # if on start up this failed, get the defaults or the values form the CONFIG File
     if not BASE_DOMAIN:
